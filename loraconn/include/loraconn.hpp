@@ -129,6 +129,11 @@ struct Packet
         swap(lhs._raw, rhs._raw);
     }
 
+    inline const uint8_t *getData()
+    {
+        return _raw;
+    }
+
 protected:
 
     uint8_t _totalSize;
