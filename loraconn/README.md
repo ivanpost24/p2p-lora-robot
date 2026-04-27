@@ -1,0 +1,141 @@
+# loraconn
+
+Library providing data types for simple connection-style communication over LoRa. The full protocol specification is
+provided below.
+
+## 1. Physical layer
+
+Devices shall use the LoRa communication standard. This should not be confused with LoRaWAN, which is the most popular
+protocol using this physical layer protocol.
+
+### 1.1. Channels
+
+The protocol uses 32 channels in the 902-928 MHz ISM band numbered 0 to 31. Each channel has a bandwidth of 500 kHz,
+and the spacing between each channel is 600 kHz. The frequency of channel $k$ can be calculated, in MHz, as follows:
+
+    freq(k) = 908.4 + 0.6 * k
+
+Channel 31 is reserved for advertising, and the remaining 30 channels are used for connections. Because the device is
+transmitting at a bandwidth of 500 kHz, it is not necessary to hop channels, though this may be a nice feature to add
+if the device is experiencing interference.
+
+### 1.2. Data rate parameters
+
+All transmissions shall use a coding rate of 4/5. The spreading factor shall be agreed upon in advance.
+
+## 2. Data link layer
+
+LoRaConn is designed specifically for communication between a pre-configured central and peripheral device. It is
+assumed that the central device is relatively powerful and thus can supply its own power. The peripheral device is
+assumed to be a relatively low-power device.
+
+### 2.1. Base header
+
+Every frame sent over this protocol begins with the following header. Devices shall use the protocol identifier to
+filter irrelevant packets sent by devices using other protocols.
+
+| Length   | Name                | Description                                          |
+| -------- | ------------------- | ---------------------------------------------------- |
+| 2 octets | Protocol identifier | 0x1195, which identifies the protocol.               |
+| 5 bits   | Special             | Special control flags, depending on the packet type. |
+| 3 bits   | Packet type         | The type of the packet (see 2.1.1).                  |
+| varies   | Rest of frame       |                                                      |
+
+*Header length*: 3 octets
+
+### 2.1.1. Packet types
+
+The packet type field above may be one of the following. Each packet type is explained in further detail below.
+
+| ID      | Type                    |
+| ------- | ----------------------- |
+| 000     | Advertisement           |
+| 001–010 | Reserved for future use |
+| 011     | Connection request      |
+| 100     | Connection data         |
+| 101–110 | Reserved for future use |
+| 111     | Disconnection request   |
+
+### 2.2. Advertising
+
+The peripheral device shall periodically send out advertisements on channel 31. Central devices shall continuously
+listen on channel 31 for advertisements. The central device is assumed to already know the device address of the
+peripheral device to which it wishes to connect (this information is provided out-of-band). The peripheral device
+shall listen on channel 31 for at least the following durations:
+
+| SF  | RX window duration |
+| --- | ------------------ |
+| 5   | 15 ms              |
+| 6   | 20 ms              |
+| 7   | 25 ms              |
+| 8   | 35 ms              |
+| 9   | 45 ms              |
+| 10  | 55 ms              |
+| 11  | 155 ms             |
+| 12  | 310 ms             |
+
+Advertisements simply contain a peripheral device address:
+
+| Length   | Name                      | Description                                                |
+| -------- | ------------------------- | ---------------------------------------------------------- |
+| 6 octets | Peripheral device address | An uniquely identifying address for the peripheral device. |
+
+*Data length:* 6 octets; *Total length*: 9 octets
+
+### 2.3. Connection request
+
+Once the central device receives an advertisement from the correct peripheral device, it shall send a connection
+request in response as soon as possible. The connection request will contain a specification for *connection events*,
+a concept borrowed from Bluetooth Low Energy. The window size, offset, and interval shall be chosen appropriately
+based on transmission duration with the chosen spreading factor.
+
+#### 2.3.1. Connection request special section
+
+| Bit index (LSB–MSB) | Name    | Description                                                   |
+| ------------------- | ------- | ------------------------------------------------------------- |
+| 0–4                 | Channel | The channel to use for communication, in the range \[0, 30\]. |
+
+#### 2.3.2. Connection request main section
+
+| Length   | Name                  | Description                                               |
+| -------- | --------------------- | --------------------------------------------------------- |
+| 6 octets | Advertiser address    | Address the advertiser used to identify itself.           |
+| 2 octets | Connection identifier | A randomly generated sequence to identify the connection. |
+| 1 octet  | Window size           | Acceptable error window for each transmission (0.1 ms).   |
+| 2 octets | Window offset         | Time until the first connection event after TX (0.1 ms).  |
+| 2 octets | Window interval       | Time between connection events (0.1 ms).                  |
+
+*Data length*: 13 octets; *Total length*: 16 octets
+
+### 2.4. Connection data
+
+Once a connection request is sent, the central device will send the first packet of the connection after the provided
+window offset time, measured from the end of the packet transmission. It shall use the sequence number of 0.
+
+#### 2.4.1. Connection data special section
+
+| Bit index (LSB–MSB) | Name                 | Description              |
+| ------------------- | -------------------- | ------------------------ |
+| 0                   | Sequence number      | Same as in BLE.          |
+| 1                   | Next sequence number | Same as in BLE.          |
+| 2–4                 | RFU                  | Reserved for future use. |
+
+#### 2.4.2. Main section
+
+| Length   | Name                  | Description                                                       |
+| -------- | --------------------- | ----------------------------------------------------------------- |
+| 2 octets | Connection identifier | The same stdconnection identifier sent in the connection request. |
+| 1 octet  | Payload length        | Length of the payload (bytes)                                     |
+| varies   | Payload               |                                                                   |
+
+*Header length:* 3 octets; *Total length*: 6 + (Payload length) octets
+
+### 2.5. Disconnection request
+
+Either device may send a disconnection request to terminate the connection.
+
+| Length   | Name                  | Description                                                    |
+| -------- | --------------------- | -------------------------------------------------------------- |
+| 2 octets | Connection identifier | The same connection identifier sent in the connection request. |
+
+*Data length:* 2 octets; *Total length*: 5 octets

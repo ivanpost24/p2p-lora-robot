@@ -1,0 +1,6 @@
+{
+    "$schema": "https://raw.githubusercontent.com/platformio/platformio-core/develop/platformio/assets/schema/library.json",
+    "name": "LoRaConnections",
+    "version": "0.0.1",
+    "description": "Implements peer-to-peer connection-style networking with LoRa"
+}
