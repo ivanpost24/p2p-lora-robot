@@ -104,17 +104,17 @@ struct Packet
         return *this;
     }
 
-    uint8_t getTotalSize()
+    uint8_t getTotalSize() const
     {
         return _totalSize;
     }
 
-    uint8_t getDataSize()
+    uint8_t getDataSize() const
     {
         return _dataSize;
     }
 
-    PacketType getPacketType();
+    PacketType getPacketType() const;
 
     ~Packet() {
         delete[] this->_raw;
@@ -129,7 +129,7 @@ struct Packet
         swap(lhs._raw, rhs._raw);
     }
 
-    inline const uint8_t *getData()
+    inline const uint8_t *getData() const
     {
         return _raw;
     }
@@ -142,9 +142,20 @@ protected:
 
     void setPacketType(PacketType packetType);
 
+    inline const uint8_t *data() const
+    {
+        return _raw + headerSize;
+    }
+
     inline uint8_t *data()
     {
         return _raw + headerSize;
+    }
+
+    inline const uint8_t *data(uint8_t index) const
+    {
+        assert(index < _dataSize);
+        return _raw + headerSize + index;
     }
 
     inline uint8_t *data(uint8_t index)
@@ -172,7 +183,7 @@ struct Advertisement : public Packet
     Advertisement(Advertisement&& other) : Packet(other)
     {}
 
-    void getAdvertiserAddress(MACAddress& out);
+    void getAdvertiserAddress(MACAddress& out) const;
     void setAdvertiserAddress(const MACAddress& advertiserAddress);
 
 };
@@ -188,22 +199,22 @@ struct ConnectionRequest: public Packet
         this->setPacketType(type);
     }
 
-    void getAdvertiserAddress(MACAddress& out);
+    void getAdvertiserAddress(MACAddress& out) const;
     void setAdvertiserAddress(const MACAddress& advertiserAddress);
 
-    void getConnectionIdentifier(ConnectionIdentifier& out);
+    void getConnectionIdentifier(ConnectionIdentifier& out) const;
     void setConnectionIdentifier(const ConnectionIdentifier& connectionIdentifier);
 
-    uint8_t getWindowSize();
+    uint8_t getWindowSize() const;
     void setWindowSize(uint8_t windowSize);
 
-    uint16_t getWindowOffset();
+    uint16_t getWindowOffset() const;
     void setWindowOffset(uint16_t windowOffset);
 
-    uint16_t getWindowInterval();
+    uint16_t getWindowInterval() const;
     void setWindowInterval(uint16_t windowInterval);
 
-    uint8_t getChannel();
+    uint8_t getChannel() const;
     void setChannel(uint8_t firstChannel);
 
 };
@@ -221,19 +232,19 @@ struct ConnectionData : public Packet
         this->setPayloadLength(payloadCapacity);
     }
 
-    bool getSequenceNumber();
+    bool getSequenceNumber() const;
     void setSequenceNumber(bool sequenceNumber);
 
-    bool getNextExpectedSequenceNumber();
+    bool getNextExpectedSequenceNumber() const;
     void setNextExpectedSequenceNumber(bool sequenceNumber);
 
-    void getConnectionIdentifier(ConnectionIdentifier& out);
+    void getConnectionIdentifier(ConnectionIdentifier& out) const;
     void setConnectionIdentifier(const ConnectionIdentifier& connectionIdentifier);
 
-    uint8_t getPayloadLength();
+    uint8_t getPayloadLength() const;
     void setPayloadLength(uint8_t payloadLength);
 
-    void getPayload(uint8_t *out);
+    void getPayload(uint8_t *out) const;
     void setPayload(uint8_t *buf, uint8_t length);
     uint8_t *payload();
 
@@ -255,7 +266,7 @@ struct DisconnectionRequest : public Packet
         this->setPacketType(type);
     }
 
-    void getConnectionIdentifier(ConnectionIdentifier& out);
+    void getConnectionIdentifier(ConnectionIdentifier& out) const;
     void setConnectionIdentifier(const ConnectionIdentifier& connectionIdentifier);
 
 };
