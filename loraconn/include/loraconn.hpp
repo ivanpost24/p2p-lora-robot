@@ -178,10 +178,14 @@ struct Advertisement : public Packet
     }
 
     explicit Advertisement(const Packet& other) : Packet(other)
-    {}
+    {
+        assert(getPacketType() == PacketType::ADVERT);
+    }
 
     explicit Advertisement(Packet&& other) : Packet(std::move(other))
-    {}
+    {
+        assert(getPacketType() == PacketType::ADVERT);
+    }
 
     Advertisement(const Advertisement& other) : Packet(other)
     {}
@@ -206,10 +210,14 @@ struct ConnectionRequest: public Packet
     }
 
     explicit ConnectionRequest(const Packet& other) : Packet(other)
-    {}
+    {
+        assert(getPacketType() == PacketType::CONN_REQ);
+    }
 
     explicit ConnectionRequest(Packet&& other) : Packet(std::move(other))
-    {}
+    {
+        assert(getPacketType() == PacketType::CONN_REQ);
+    }
 
     ConnectionRequest(const ConnectionRequest& other) : Packet(other)
     {}
@@ -251,10 +259,14 @@ struct ConnectionData : public Packet
     }
 
     explicit ConnectionData(const Packet& other) : Packet(other)
-    {}
+    {
+        assert(getPacketType() == PacketType::CONN_DATA);
+    }
 
     explicit ConnectionData(Packet&& other) : Packet(std::move(other))
-    {}
+    {
+        assert(getPacketType() == PacketType::CONN_DATA);
+    }
 
     ConnectionData(const ConnectionData& other) : Packet(other)
     {}
@@ -297,10 +309,14 @@ struct DisconnectionRequest : public Packet
     }
 
     explicit DisconnectionRequest(const Packet& other) : Packet(other)
-    {}
+    {
+        assert(getPacketType() == PacketType::DISCONN_REQ);
+    }
 
     explicit DisconnectionRequest(Packet&& other) : Packet(std::move(other))
-    {}
+    {
+        assert(getPacketType() == PacketType::DISCONN_REQ);
+    }
 
     DisconnectionRequest(const DisconnectionRequest& other) : Packet(other)
     {}
