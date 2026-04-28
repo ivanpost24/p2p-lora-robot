@@ -17,7 +17,7 @@ void loraconn::Packet::setPacketType(PacketType packetType)
 
 void loraconn::Advertisement::getAdvertiserAddress(MACAddress& out)
 {
-    std::copy(data(), data(out.size()), out);
+    std::copy(data(), data(out.size()), out.begin());
 }
 
 void loraconn::Advertisement::setAdvertiserAddress(const MACAddress &advertiserAddress)
@@ -27,7 +27,7 @@ void loraconn::Advertisement::setAdvertiserAddress(const MACAddress &advertiserA
 
 void loraconn::ConnectionRequest::getAdvertiserAddress(MACAddress& out)
 {
-    std::copy(data(), data(out.size()), out);
+    std::copy(data(), data(out.size()), out.begin());
 }
 
 void loraconn::ConnectionRequest::setAdvertiserAddress(const MACAddress &advertiserAddress)
@@ -37,7 +37,7 @@ void loraconn::ConnectionRequest::setAdvertiserAddress(const MACAddress &adverti
 
 void loraconn::ConnectionRequest::getConnectionIdentifier(ConnectionIdentifier &out)
 {
-    std::copy(data(6), data(6 + out.size()), out);
+    std::copy(data(6), data(6 + out.size()), out.begin());
 }
 
 void loraconn::ConnectionRequest::setConnectionIdentifier(const ConnectionIdentifier &connectionIdentifier)
@@ -110,7 +110,7 @@ void loraconn::ConnectionData::setNextExpectedSequenceNumber(bool sequenceNumber
 
 void loraconn::ConnectionData::getConnectionIdentifier(ConnectionIdentifier &out)
 {
-    std::copy(data(), data(out.size()), out);
+    std::copy(data(), data(out.size()), out.begin());
 }
 
 void loraconn::ConnectionData::setConnectionIdentifier(const ConnectionIdentifier &connectionIdentifier)
@@ -147,7 +147,7 @@ uint8_t *loraconn::ConnectionData::payload()
 
 void loraconn::DisconnectionRequest::getConnectionIdentifier(ConnectionIdentifier &out)
 {
-    std::copy(data(), data(out.size()), out);
+    std::copy(data(), data(out.size()), out.begin());
 }
 
 void loraconn::DisconnectionRequest::setConnectionIdentifier(const ConnectionIdentifier &connectionIdentifier)

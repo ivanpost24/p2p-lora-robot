@@ -66,7 +66,7 @@ struct Packet
     static constexpr uint8_t headerSize = 3;
 
     Packet(uint8_t dataSize)
-    : _totalSize{headerSize + dataSize}
+    : _totalSize(headerSize + dataSize)
     {
         assert(dataSize <= UINT8_MAX - headerSize);
         _raw = new uint8_t[_totalSize];
@@ -74,7 +74,7 @@ struct Packet
     }
 
     Packet(uint8_t *buf, uint8_t bufSize)
-    : _totalSize{bufSize}, _dataSize{_dataSize - bufSize}, _raw{buf}
+    : _totalSize{bufSize}, _dataSize(bufSize - headerSize), _raw{buf}
     {
         assert(bufSize >= headerSize);
     }
