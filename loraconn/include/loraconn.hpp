@@ -177,6 +177,12 @@ struct Advertisement : public Packet
         this->setPacketType(type);
     }
 
+    explicit Advertisement(const Packet& other) : Packet(other)
+    {}
+
+    explicit Advertisement(Packet&& other) : Packet(std::move(other))
+    {}
+
     Advertisement(const Advertisement& other) : Packet(other)
     {}
 
@@ -198,6 +204,18 @@ struct ConnectionRequest: public Packet
     {
         this->setPacketType(type);
     }
+
+    explicit ConnectionRequest(const Packet& other) : Packet(other)
+    {}
+
+    explicit ConnectionRequest(Packet&& other) : Packet(std::move(other))
+    {}
+
+    ConnectionRequest(const ConnectionRequest& other) : Packet(other)
+    {}
+
+    ConnectionRequest(ConnectionRequest&& other) : Packet(other)
+    {}
 
     void getAdvertiserAddress(MACAddress& out) const;
     void setAdvertiserAddress(const MACAddress& advertiserAddress);
@@ -232,6 +250,18 @@ struct ConnectionData : public Packet
         this->setPayloadLength(payloadCapacity);
     }
 
+    explicit ConnectionData(const Packet& other) : Packet(other)
+    {}
+
+    explicit ConnectionData(Packet&& other) : Packet(std::move(other))
+    {}
+
+    ConnectionData(const ConnectionData& other) : Packet(other)
+    {}
+
+    ConnectionData(ConnectionData&& other) : Packet(other)
+    {}
+
     bool getSequenceNumber() const;
     void setSequenceNumber(bool sequenceNumber);
 
@@ -265,6 +295,18 @@ struct DisconnectionRequest : public Packet
     {
         this->setPacketType(type);
     }
+
+    explicit DisconnectionRequest(const Packet& other) : Packet(other)
+    {}
+
+    explicit DisconnectionRequest(Packet&& other) : Packet(std::move(other))
+    {}
+
+    DisconnectionRequest(const DisconnectionRequest& other) : Packet(other)
+    {}
+
+    DisconnectionRequest(DisconnectionRequest&& other) : Packet(other)
+    {}
 
     void getConnectionIdentifier(ConnectionIdentifier& out) const;
     void setConnectionIdentifier(const ConnectionIdentifier& connectionIdentifier);
