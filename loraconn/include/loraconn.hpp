@@ -234,6 +234,7 @@ struct Advertisement : public Packet
     }
 
     void getAdvertiserAddress(MACAddress& out) const;
+    bool advertiserAddressMatches(const MACAddress& other) const;
     void setAdvertiserAddress(const MACAddress& advertiserAddress);
 
 };
