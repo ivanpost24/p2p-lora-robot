@@ -101,7 +101,7 @@ based on transmission duration with the chosen spreading factor.
 | -------- | --------------------- | --------------------------------------------------------- |
 | 6 octets | Advertiser address    | Address the advertiser used to identify itself.           |
 | 2 octets | Connection identifier | A randomly generated sequence to identify the connection. |
-| 1 octet  | Window size           | Acceptable error window for each transmission (0.1 ms).   |
+| 2 octets | Window size           | Acceptable error window for each transmission (0.1 ms).   |
 | 2 octets | Window offset         | Time until the first connection event after TX (0.1 ms).  |
 | 2 octets | Window interval       | Time between connection events (0.1 ms).                  |
 

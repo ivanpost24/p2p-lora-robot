@@ -54,40 +54,44 @@ enum class PacketType : uint8_t
      * \brief Disconnection Request packet type.
      */
     DISCONN_REQ = 0b111,
+
 };
 
 constexpr uint8_t PROTOCOL_ID[] = {0x11, 0x95};
 
 bool isLoRaConnPacket(uint8_t *data);
 
+PacketType getPacketType(uint8_t *data);
+
 struct Packet
 {
 
-    static constexpr uint8_t headerSize = 3;
+    static constexpr uint8_t headerLength = 3;
 
-    Packet(uint8_t dataSize)
-    : _totalSize(headerSize + dataSize)
+    Packet(uint8_t capacity)
+    : _capacity(capacity)
     {
-        assert(dataSize <= UINT8_MAX - headerSize);
-        _raw = new uint8_t[_totalSize];
+        assert(_capacity >= headerLength);
+        _dataLength = 0;
+        _raw = new uint8_t[_capacity];
         memcpy(_raw, PROTOCOL_ID, 2);
     }
 
-    Packet(uint8_t *buf, uint8_t bufSize)
-    : _totalSize{bufSize}, _dataSize(bufSize - headerSize), _raw{buf}
+    Packet(uint8_t *buf, uint8_t length)
+    : _capacity{length}, _dataLength(length - headerLength), _raw{buf}
     {
-        assert(bufSize >= headerSize);
+        assert(length >= headerLength);
     }
 
     Packet(const Packet& other)
-    : _totalSize(other._totalSize), _dataSize(other._dataSize)
+    : _capacity(other._capacity), _dataLength(other._dataLength)
     {
-        _raw = new uint8_t[other._totalSize];
-        memcpy(_raw, other._raw, other._totalSize);
+        _raw = new uint8_t[other._capacity];
+        memcpy(_raw, other._raw, other._capacity);
     }
 
     Packet(Packet&& other)
-    : _totalSize{other._totalSize}, _dataSize{other._dataSize}
+    : _capacity{other._capacity}, _dataLength{other._dataLength}
     {
         std::swap(this->_raw, other._raw);
     }
@@ -104,14 +108,25 @@ struct Packet
         return *this;
     }
 
-    uint8_t getTotalSize() const
+    uint8_t getCapacity() const
     {
-        return _totalSize;
+        return _capacity;
     }
 
-    uint8_t getDataSize() const
+    uint8_t getLength() const
     {
-        return _dataSize;
+        return headerLength + _dataLength;
+    }
+
+    uint8_t getDataLength() const
+    {
+        return _dataLength;
+    }
+
+    void setDataLength(uint8_t length)
+    {
+        assert(headerLength + length <= _capacity);
+        _dataLength = length;
     }
 
     PacketType getPacketType() const;
@@ -124,8 +139,8 @@ struct Packet
     {
         using std::swap;
 
-        swap(lhs._totalSize, rhs._totalSize);
-        swap(lhs._dataSize, rhs._dataSize);
+        swap(lhs._capacity, rhs._capacity);
+        swap(lhs._dataLength, rhs._dataLength);
         swap(lhs._raw, rhs._raw);
     }
 
@@ -134,34 +149,47 @@ struct Packet
         return _raw;
     }
 
+    bool setData(uint8_t *buf, uint8_t length)
+    {
+        assert(length <= _capacity);
+        assert(length >= headerLength);
+        if (isLoRaConnPacket(buf)) {
+            memcpy(_raw, buf, length);
+            _dataLength = length;
+            return true;
+        } else {
+            return false;
+        }
+    }
+
 protected:
 
-    uint8_t _totalSize;
-    uint8_t _dataSize;
+    uint8_t _capacity;
+    uint8_t _dataLength;
     uint8_t *_raw;
 
     void setPacketType(PacketType packetType);
 
     inline const uint8_t *data() const
     {
-        return _raw + headerSize;
+        return _raw + headerLength;
     }
 
     inline uint8_t *data()
     {
-        return _raw + headerSize;
+        return _raw + headerLength;
     }
 
     inline const uint8_t *data(uint8_t index) const
     {
-        assert(index < _dataSize);
-        return _raw + headerSize + index;
+        assert(index < _dataLength);
+        return _raw + headerLength + index;
     }
 
     inline uint8_t *data(uint8_t index)
     {
-        assert(index < _dataSize);
-        return _raw + headerSize + index;
+        assert(index < _dataLength);
+        return _raw + headerLength + index;
     }
 
 };
@@ -170,9 +198,9 @@ struct Advertisement : public Packet
 {
 
     static constexpr PacketType type = PacketType::ADVERT;
-    static constexpr uint8_t dataSize = 6;
+    static constexpr uint8_t dataLength = 6;
 
-    Advertisement() : Packet(dataSize)
+    Advertisement() : Packet(headerLength + dataLength)
     {
         this->setPacketType(type);
     }
@@ -193,6 +221,18 @@ struct Advertisement : public Packet
     Advertisement(Advertisement&& other) : Packet(other)
     {}
 
+    Advertisement& operator=(Packet other)
+    {
+        swap(*this, other);  // copy-and-swap idiom
+        return *this;
+    }
+
+    Advertisement& operator=(Packet&& other)
+    {
+        swap(*this, other);
+        return *this;
+    }
+
     void getAdvertiserAddress(MACAddress& out) const;
     void setAdvertiserAddress(const MACAddress& advertiserAddress);
 
@@ -202,9 +242,9 @@ struct ConnectionRequest: public Packet
 {
 
     static constexpr PacketType type = PacketType::CONN_REQ;
-    static constexpr uint8_t dataSize = 13;
+    static constexpr uint8_t dataLength = 14;
 
-    ConnectionRequest() : Packet(dataSize)
+    ConnectionRequest() : Packet(headerLength + dataLength)
     {
         this->setPacketType(type);
     }
@@ -225,14 +265,27 @@ struct ConnectionRequest: public Packet
     ConnectionRequest(ConnectionRequest&& other) : Packet(other)
     {}
 
+    ConnectionRequest& operator=(Packet other)
+    {
+        swap(*this, other);  // copy-and-swap idiom
+        return *this;
+    }
+
+    ConnectionRequest& operator=(Packet&& other)
+    {
+        swap(*this, other);
+        return *this;
+    }
+
     void getAdvertiserAddress(MACAddress& out) const;
+    bool advertiserAddressMatches(const MACAddress& other) const;
     void setAdvertiserAddress(const MACAddress& advertiserAddress);
 
     void getConnectionIdentifier(ConnectionIdentifier& out) const;
     void setConnectionIdentifier(const ConnectionIdentifier& connectionIdentifier);
 
-    uint8_t getWindowSize() const;
-    void setWindowSize(uint8_t windowSize);
+    uint16_t getWindowSize() const;
+    void setWindowSize(uint16_t windowSize);
 
     uint16_t getWindowOffset() const;
     void setWindowOffset(uint16_t windowOffset);
@@ -249,10 +302,10 @@ struct ConnectionData : public Packet
 {
 
     static constexpr PacketType type = PacketType::CONN_DATA;
-    static constexpr uint8_t headerLength = 3;
+    static constexpr uint8_t dataHeaderLength = 3;
 
     ConnectionData(uint8_t payloadCapacity)
-    : Packet(headerLength + payloadCapacity), payloadCapacity{payloadCapacity}
+    : Packet(headerLength + dataHeaderLength + payloadCapacity), payloadCapacity{payloadCapacity}
     {
         this->setPacketType(type);
         this->setPayloadLength(payloadCapacity);
@@ -261,11 +314,15 @@ struct ConnectionData : public Packet
     explicit ConnectionData(const Packet& other) : Packet(other)
     {
         assert(getPacketType() == PacketType::CONN_DATA);
+        assert(other.getDataLength() >= dataHeaderLength);
+        this->payloadCapacity = other.getDataLength() - dataHeaderLength;
     }
 
     explicit ConnectionData(Packet&& other) : Packet(std::move(other))
     {
         assert(getPacketType() == PacketType::CONN_DATA);
+        assert(this->getDataLength() >= dataHeaderLength);
+        this->payloadCapacity = this->getDataLength() - dataHeaderLength;
     }
 
     ConnectionData(const ConnectionData& other) : Packet(other)
@@ -281,6 +338,7 @@ struct ConnectionData : public Packet
     void setNextExpectedSequenceNumber(bool sequenceNumber);
 
     void getConnectionIdentifier(ConnectionIdentifier& out) const;
+    bool connectionIdentifierMatches(const ConnectionIdentifier& connId) const;
     void setConnectionIdentifier(const ConnectionIdentifier& connectionIdentifier);
 
     uint8_t getPayloadLength() const;
@@ -300,10 +358,10 @@ struct DisconnectionRequest : public Packet
 {
 
     static constexpr PacketType type = PacketType::DISCONN_REQ;
-    static constexpr uint8_t size = 2;
+    static constexpr uint8_t dataLength = 2;
 
     DisconnectionRequest()
-    : Packet(size)
+    : Packet(headerLength + dataLength)
     {
         this->setPacketType(type);
     }
@@ -325,6 +383,7 @@ struct DisconnectionRequest : public Packet
     {}
 
     void getConnectionIdentifier(ConnectionIdentifier& out) const;
+    bool connectionIdentifierMatches(const ConnectionIdentifier& connId) const;
     void setConnectionIdentifier(const ConnectionIdentifier& connectionIdentifier);
 
 };

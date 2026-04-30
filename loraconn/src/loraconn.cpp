@@ -30,6 +30,11 @@ void loraconn::ConnectionRequest::getAdvertiserAddress(MACAddress& out) const
     std::copy(data(), data(out.size()), out.begin());
 }
 
+bool loraconn::ConnectionRequest::advertiserAddressMatches(const MACAddress &other) const
+{
+    return memcmp(data(), other.data(), other.size()) == 0;
+}
+
 void loraconn::ConnectionRequest::setAdvertiserAddress(const MACAddress &advertiserAddress)
 {
     std::copy(advertiserAddress.cbegin(), advertiserAddress.cend(), data());
@@ -45,36 +50,37 @@ void loraconn::ConnectionRequest::setConnectionIdentifier(const ConnectionIdenti
     std::copy(connectionIdentifier.cbegin(), connectionIdentifier.cend(), data(6));
 }
 
-uint8_t loraconn::ConnectionRequest::getWindowSize() const
+uint16_t loraconn::ConnectionRequest::getWindowSize() const
 {
-    return *data(8);
+    return (static_cast<uint16_t>(*data(9)) << 8) | *data(8);
 }
 
-void loraconn::ConnectionRequest::setWindowSize(uint8_t windowSize)
+void loraconn::ConnectionRequest::setWindowSize(uint16_t windowSize)
 {
-    *data(8) = windowSize;
+    *data(8) = windowSize & 0xFF;
+    *data(9) = windowSize >> 8;
 }
 
 uint16_t loraconn::ConnectionRequest::getWindowOffset() const
 {
-    return (static_cast<uint16_t>(*data(10)) << 8) | *data(9);
+    return (static_cast<uint16_t>(*data(11)) << 8) | *data(10);
 }
 
 void loraconn::ConnectionRequest::setWindowOffset(uint16_t windowOffset)
 {
-    *data(9) = windowOffset & 0xFF;
-    *data(10) = windowOffset >> 8;
+    *data(10) = windowOffset & 0xFF;
+    *data(11) = windowOffset >> 8;
 }
 
 uint16_t loraconn::ConnectionRequest::getWindowInterval() const
 {
-    return (static_cast<uint16_t>(*data(12)) << 8) | *data(11);
+    return (static_cast<uint16_t>(*data(13)) << 8) | *data(12);
 }
 
 void loraconn::ConnectionRequest::setWindowInterval(uint16_t windowInterval)
 {
-    *data(11) = windowInterval & 0xFF;
-    *data(12) = windowInterval >> 8;
+    *data(12) = windowInterval & 0xFF;
+    *data(13) = windowInterval >> 8;
 }
 
 uint8_t loraconn::ConnectionRequest::getChannel() const
@@ -111,6 +117,11 @@ void loraconn::ConnectionData::setNextExpectedSequenceNumber(bool sequenceNumber
 void loraconn::ConnectionData::getConnectionIdentifier(ConnectionIdentifier &out) const
 {
     std::copy(data(), data(out.size()), out.begin());
+}
+
+bool loraconn::ConnectionData::connectionIdentifierMatches(const ConnectionIdentifier &connId) const
+{
+    return memcmp(data(), connId.data(), connId.size()) == 0;
 }
 
 void loraconn::ConnectionData::setConnectionIdentifier(const ConnectionIdentifier &connectionIdentifier)
@@ -150,6 +161,11 @@ void loraconn::DisconnectionRequest::getConnectionIdentifier(ConnectionIdentifie
     std::copy(data(), data(out.size()), out.begin());
 }
 
+bool loraconn::DisconnectionRequest::connectionIdentifierMatches(const ConnectionIdentifier &connId) const
+{
+    return memcmp(data(), connId.data(), connId.size()) == 0;
+}
+
 void loraconn::DisconnectionRequest::setConnectionIdentifier(const ConnectionIdentifier &connectionIdentifier)
 {
     std::copy(connectionIdentifier.cbegin(), connectionIdentifier.cend(), data());
@@ -158,4 +174,9 @@ void loraconn::DisconnectionRequest::setConnectionIdentifier(const ConnectionIde
 bool loraconn::isLoRaConnPacket(uint8_t *data)
 {
     return memcmp(data, PROTOCOL_ID, 2) == 0;
+}
+
+loraconn::PacketType loraconn::getPacketType(uint8_t *data)
+{
+    return static_cast<PacketType>(data[2] & PACKET_TYPE_MASK);
 }
