@@ -20,6 +20,11 @@ void loraconn::Advertisement::getAdvertiserAddress(MACAddress& out) const
     std::copy(data(), data(out.size()), out.begin());
 }
 
+bool loraconn::Advertisement::advertiserAddressMatches(const MACAddress &other) const
+{
+    return memcmp(data(), other.data(), other.size()) == 0;
+}
+
 void loraconn::Advertisement::setAdvertiserAddress(const MACAddress &advertiserAddress)
 {
     std::copy(advertiserAddress.cbegin(), advertiserAddress.cend(), data());
