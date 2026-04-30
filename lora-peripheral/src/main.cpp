@@ -1,202 +1,380 @@
 /*
-   To successfully receive data, the following settings have to be the same
-   on both transmitter and receiver:
-    - carrier frequency
-    - bandwidth
-    - spreading factor
+To successfully receive data, the following settings have to be the same
+on both transmitter and receiver:
+- carrier frequency
+- bandwidth
+- spreading factor
 */
 
 // include the library
 #include <RadioLib.h>
+#include "loraconn.hpp"
 
-/****************Pin assignment for the Heltec V3 board******************/
-static const int LORA_CS    = 8;      // Chip select pin
-static const int LORA_MOSI  = 10;
-static const int LORA_MISO  = 11;
-static const int LORA_SCK   = 9;
-static const int LORA_NRST  = 12;      // Reset pin
-static const int LORA_DIO1  = 14;      // DIO1 switch
-static const int LORA_BUSY  = 13;
-static const int BUTTON     = 0;
+/**************** Pin assignment for the Heltec V3 board ******************/
+static constexpr int LORA_CS    = 8;      // Chip select pin
+static constexpr int LORA_MOSI  = 10;
+static constexpr int LORA_MISO  = 11;
+static constexpr int LORA_SCK   = 9;
+static constexpr int LORA_NRST  = 12;      // Reset pin
+static constexpr int LORA_DIO1  = 14;      // DIO1 switch
+static constexpr int LORA_BUSY  = 13;
+static constexpr int BUTTON     = 0;
 
 /****************LoRa parameters (you need to fill these params)******************/
-static const float FREQ = 906.7;  // MHz channel 22
-static const float BW = 125.0;  // kHz
-static const uint8_t SF = 9;
-static const int8_t TX_PWR = 20;
-static const uint8_t CR = 5;
-static const uint8_t SYNC_WORD = (uint8_t)0x34;
-static const uint16_t PREAMBLE = 8;
+static constexpr uint8_t SF = 9;
+static constexpr int8_t TX_PWR = 20;
+static constexpr uint8_t CR = 5;
+static constexpr uint8_t SYNC_WORD = (uint8_t)0x34;
+static constexpr uint16_t PREAMBLE = 8;
 
-/****************Payload******************/
-String tx_payload = "Dev1: aloha, little mac";    // change this to something unique to your group/something you want to say to each other
+static constexpr loraconn::MACAddress macAddress = {0x58, 0x02, 0x34, 0x00, 0xfe, 0x54};
+static constexpr unsigned long rxWindows[] = {15000, 20000, 25000, 35000, 45000, 55000, 155000, 310000};
+static constexpr unsigned long rxWindow = rxWindows[SF - 5];
+static constexpr unsigned long advEventLength = 1000000;
 
-/****************transceiver flags******************/
-volatile bool tx_flag = false;
-volatile bool rx_flag = false;
+enum class State
+{
+    IDLE,
+    ADV_TX,
+    ADV_RX,
+    ADV_SLEEP,
+    CONN_STARTING,
+    CONN_TX,
+    CONN_RX,
+    CONN_TX_SLEEP,
+    CONN_RX_SLEEP,
+};
 
-SX1262 radio = new Module(LORA_CS, LORA_DIO1, LORA_NRST, LORA_BUSY);
+static volatile State state(State::IDLE);
+static volatile bool operationCompleted = false;
+static volatile uint16_t txError = RADIOLIB_ERR_NONE;
+static volatile unsigned long eventStart = 0;
+static volatile unsigned long connWindowOffset = 0;
+static volatile unsigned long connWindowInterval = 0;
+static volatile unsigned long connWindowSize = 0;
+static volatile bool lastSequenceNumber = 0;
+static loraconn::ConnectionIdentifier connId;
+static uint8_t buf[255];
+static loraconn::Packet packet(255);
+
+static int counter = 1;
+
+static void setState(State _state)
+{
+    state = _state;
+    Serial.print(F("State changed to "));
+    switch (state) {
+    case State::IDLE:
+        Serial.println(F("IDLE"));
+        break;
+    case State::ADV_TX:
+        Serial.println(F("ADV_TX"));
+        break;
+    case State::ADV_RX:
+        Serial.println(F("ADV_RX"));
+        break;
+    case State::ADV_SLEEP:
+        Serial.println(F("ADV_SLEEP"));
+        break;
+    case State::CONN_STARTING:
+        Serial.println(F("CONN_STARTING"));
+        break;
+    case State::CONN_TX:
+        Serial.println(F("CONN_TX"));
+        break;
+    case State::CONN_RX:
+        Serial.println(F("CONN_RX"));
+        break;
+    case State::CONN_TX_SLEEP:
+        Serial.println(F("CONN_TX_SLEEP"));
+        break;
+    case State::CONN_RX_SLEEP:
+        Serial.println(F("CONN_RX_SLEEP"));
+        break;
+    default:
+        Serial.println(F("UNKNOWN"));
+        break;
+    }
+}
 
 // this function is called when a complete packet
 // is received by the module
 // IMPORTANT: this function MUST be 'void' type
 //            and MUST NOT have any arguments!
 #if defined(ESP8266) || defined(ESP32)
-  ICACHE_RAM_ATTR
+ICACHE_RAM_ATTR
 #endif
-void setFlag(void) {
-  // we got a packet, set the flag. However, this might cause the interrupt to be called when a transmission takes place too
-  // luckily, there is a simple fix. check if the device just transmitted. if it did, then it is probably not the rx interrupt
-  // if not, we know it is the rx interrupt and therefore can set the flag
-    rx_flag = true;
+void onOperationCompleted(void)
+{
+    operationCompleted = true;
 }
 
-void buttonISR(){
-  tx_flag = true;
+void sendError(const char* message, int16_t state)
+{
+    Serial.printf("ERROR: %s (error code %d).\n", message, state);
 }
-
-// It is important to remember that ISRs are supposed to be short and are mostly used for triggering flags.
-// doing Serial.print() might fail and cause device resets. This is because Serial.print() uses interrupt to read data,
-// but in an ISR, all other interrupts are suspended, and therefore the operation fails.
 
 // Helper function to print error messages
-void error_message(const char* message, int16_t state) {
-  Serial.printf("ERROR!!! %s with error code %d\n", message, state);
-  while(true); // loop forever
+void terminateWithError(const char* message, int16_t state)
+{
+    Serial.printf("ERROR: %s (error code %d). Terminating.\n", message, state);
+    while(true); // loop forever
 }
 
-void setup() {
-  Serial.begin(115200);
-  // Create a transmit interrupt when the button is pressed.
-  pinMode(BUTTON, INPUT);
-  attachInterrupt(digitalPinToInterrupt(BUTTON), buttonISR, FALLING);
+SX1262 radio = new Module(LORA_CS, LORA_DIO1, LORA_NRST, LORA_BUSY);
 
-  // initialize SX1262 with default settings
-  Serial.print(F("[SX1262] Initializing ... "));
-  int state = radio.begin();
-  if (state == RADIOLIB_ERR_NONE) {
-    Serial.println(F("success!"));
-  } else {
-    Serial.print(F("failed, code "));
-    Serial.println(state);
-    while (true);
-  }
-
-  state = radio.setBandwidth(BW);
-  if (state != RADIOLIB_ERR_NONE) {
-      error_message("BW initialization failed", state);
-  }
-  Serial.print("[SX1262] Bandwidth:\t\t");
-  Serial.print(BW);
-  Serial.println(F(" kHz"));
-  state = radio.setFrequency(FREQ);
-  if (state != RADIOLIB_ERR_NONE) {
-      error_message("Frequency initialization failed", state);
-  }
-  Serial.print("[SX1262] Frequency:\t\t");
-  Serial.print(FREQ);
-  Serial.println(F(" MHz"));
-  state = radio.setSpreadingFactor(SF);
-  if (state != RADIOLIB_ERR_NONE) {
-      error_message("SF initialization failed", state);
-  }
-  Serial.print("[SX1262] Spreading Factor:\t\t");
-  Serial.println(SF);
-  state = radio.setOutputPower(TX_PWR);
-  if (state != RADIOLIB_ERR_NONE) {
-      error_message("Output Power initialization failed", state);
-  }
-  Serial.print("[SX1262] Transmit Power:\t\t");
-  Serial.print(TX_PWR);
-  Serial.println(F(" dBm"));
-
-  state = radio.setCurrentLimit(140.0);
-  if (state != RADIOLIB_ERR_NONE) {
-      error_message("Current limit intialization failed", state);
-  }
-   radio.setDio1Action(setFlag);    // callback when the RF interrupt is triggered
-
-  Serial.print(F("[SX1262] Starting to listen ... "));
-  state = radio.startReceive();
-  if (state == RADIOLIB_ERR_NONE) {
-    Serial.println(F("success!"));
-  } else {
-    Serial.print(F("failed, code "));
-    Serial.println(state);
-    while (true);
-  }
-}
-
-void loop() {
-  if (tx_flag){
-    Serial.print(F("[SX1262] Transmitting packet ... "));
-
-    // you can transmit C-string or Arduino string up to
-    // 256 characters long
-    // NOTE: transmit() is a blocking method!
-    int state = radio.transmit(tx_payload);
-
-    if (state == RADIOLIB_ERR_NONE) {
-      // the packet was successfully transmitted
-      Serial.println(F("success!"));
-
-      // print measured data rate
-      // Serial.print(F("[SX1262] Datarate:\t"));
-      // Serial.print(radio.getData());
-      // Serial.println(F(" bps"));
-
-    } else if (state == RADIOLIB_ERR_PACKET_TOO_LONG) {
-      // the supplied packet was longer than 256 bytes
-      Serial.println(F("too long!"));
-
-    } else if (state == RADIOLIB_ERR_TX_TIMEOUT) {
-      // timeout occured while transmitting packet
-      Serial.println(F("timeout!"));
-
-    } else {
-      // some other error occurred
-      Serial.print(F("failed, code "));
-      Serial.println(state);
-    }
-    tx_flag = false;
-    radio.startReceive();   // you can put a return value on this and check if the device was set to receive mode if needed
-}
-if(rx_flag) {
-    // reset flag
-    rx_flag = false;
-    // you can read received data as an Arduino String
-    String rx_data;
-    int state = radio.readData(rx_data);
-
-    if (state == RADIOLIB_ERR_NONE) {
-      // packet was successfully received
-      Serial.println(F("[SX1262] Received packet!"));
-
-      // print data of the packet
-      Serial.print(F("[SX1262] Data:\t\t"));
-      Serial.println(rx_data);
-
-      // print RSSI (Received Signal Strength Indicator)
-      Serial.print(F("[SX1262] RSSI:\t\t"));
-      Serial.print(radio.getRSSI());
-      Serial.println(F(" dBm"));
-
-      // print SNR (Signal-to-Noise Ratio)
-      Serial.print(F("[SX1262] SNR:\t\t"));
-      Serial.print(radio.getSNR());
-      Serial.println(F(" dB"));
-
-    } else if (state == RADIOLIB_ERR_CRC_MISMATCH) {
-      // packet was received, but is malformed
-      Serial.println(F("CRC error!"));
-
-    } else {
-      // some other error occurred
-      Serial.print(F("failed, code "));
-      Serial.println(state);
+static uint16_t tune(uint8_t channel)
+{
+    int err;
+    err = radio.setFrequency(loraconn::getChannelFrequency(channel));
+    if (err != RADIOLIB_ERR_NONE) {
+        Serial.print(F("Error tuning radio to channel "));
+        Serial.print(channel);
+        Serial.printf(" (error code %d)\n", err);
+        return err;
     }
 
-    // put module back to listen mode
-    radio.startReceive();
-  }
+    err = radio.setBandwidth(loraconn::getChannelBandwidth(channel));
+    if (err != RADIOLIB_ERR_NONE) {
+        Serial.print(F("Error setting radio bandwidth (error code "));
+        Serial.printf(" (error code %d)\n", err);
+        return err;
+    }
+
+    Serial.print(F("Changed channel to "));
+    Serial.println(channel);
+}
+
+static uint16_t startTransmitting(const loraconn::Packet& packet)
+{
+    return radio.startTransmit(packet.getData(), packet.getLength());
+}
+
+static bool readPacket(loraconn::Packet& out) {
+    size_t length = radio.getPacketLength();
+    if (length > 255) {
+        sendError("Read packet was too long", RADIOLIB_ERR_PACKET_TOO_LONG);
+        return false;
+    }
+    int err = radio.readData(buf, length);
+    if (err != RADIOLIB_ERR_NONE) {
+        Serial.printf("Failed to receive packet (error code %d)\n", err);
+        return false;
+    } else if (!out.setData(buf, length)) {
+        Serial.println(F("Ignoring non-LoRaConn packet"));
+        return true;
+    }
+}
+
+static bool currentlyReceivingPacket() {
+    uint32_t flags = radio.getIrqFlags();
+    return flags == RADIOLIB_IRQ_PREAMBLE_DETECTED || flags == RADIOLIB_IRQ_RX_DONE;
+}
+
+void setup()
+{
+    Serial.begin(115200);
+
+    // initialize SX1262 with default settings
+    Serial.print(F("[SX1262] Initializing ... "));
+    int err = radio.begin();
+    if (err == RADIOLIB_ERR_NONE) {
+        Serial.println(F("success!"));
+    } else {
+        terminateWithError("Failed to start radio", err);
+    }
+
+    err = radio.setSpreadingFactor(SF);
+    if (err != RADIOLIB_ERR_NONE) {
+        terminateWithError("SF initialization failed", err);
+    }
+    Serial.print("[SX1262] Spreading Factor:\t\t");
+    Serial.println(SF);
+    err = radio.setOutputPower(TX_PWR);
+    if (err != RADIOLIB_ERR_NONE) {
+        terminateWithError("Output Power initialization failed", err);
+    }
+    Serial.print("[SX1262] Transmit Power:\t\t");
+    Serial.print(TX_PWR);
+    Serial.println(F(" dBm"));
+
+    err = radio.setCurrentLimit(140.0);
+    if (err != RADIOLIB_ERR_NONE) {
+        terminateWithError("Current limit intialization failed", err);
+    }
+    radio.setDio1Action(onOperationCompleted);
+}
+
+void advertise()
+{
+    loraconn::Advertisement adv;
+    adv.setAdvertiserAddress(macAddress);
+    Serial.print(F("Starting advertisement ... "));
+    setState(State::ADV_TX);
+    eventStart = micros();
+    txError = startTransmitting(adv);
+}
+
+void loop(void)
+{
+    uint16_t err;
+    switch (state) {
+    case State::IDLE:
+        tune(loraconn::ADVERTISING_CHANNEL);
+        advertise();
+        return;
+    case State::ADV_TX:
+        if (operationCompleted) {
+            operationCompleted = false;
+            if (txError == RADIOLIB_ERR_NONE) {
+                Serial.println(F("success"));
+            } else {
+                sendError("failed", txError);
+            }
+            setState(State::ADV_RX);
+            err = radio.startReceive();
+            eventStart = micros();
+            if (err == RADIOLIB_ERR_NONE) {
+                Serial.print(F("Waiting for response ... "));
+            } else {
+                sendError("Failed to start receiving", err);
+                setState(State::IDLE);
+            }
+        }
+        return;
+    case State::ADV_RX:
+        if (operationCompleted) {
+            operationCompleted = false;
+            if (readPacket(packet)) {
+                if (packet.getPacketType() == loraconn::PacketType::CONN_REQ) {
+                    loraconn::ConnectionRequest connRequest(std::move(packet));
+                    if (connRequest.advertiserAddressMatches(macAddress)) {
+                        eventStart = micros();
+                        err = radio.finishReceive();
+                        if (err != RADIOLIB_ERR_NONE) {
+                            sendError("Failed to finish receiving", err);
+                        }
+                        connRequest.getConnectionIdentifier(connId);
+                        connWindowOffset = static_cast<unsigned long>(connRequest.getWindowOffset()) * 100;
+                        connWindowInterval = static_cast<unsigned long>(connRequest.getWindowInterval()) * 100;
+                        connWindowSize = static_cast<unsigned long>(connRequest.getWindowSize()) * 100;
+                        tune(connRequest.getChannel());
+                        setState(State::CONN_STARTING);
+                    } else {
+                        Serial.println(F("Ignoring connection request to different device"));
+                    }
+                } else {
+                    Serial.println(F("Ignoring packet of incorrect type"));
+                }
+            } else {
+                Serial.println(F("Ignoring packet of incorrect protocol"));
+            }
+        } else if (micros() - eventStart >= rxWindow && !currentlyReceivingPacket()) {
+            Serial.println("No response to advertisement");
+            setState(State::ADV_SLEEP);
+        }
+        return;
+    case State::ADV_SLEEP:
+        if (micros() - eventStart >= advEventLength) {
+            advertise();
+        }
+        return;
+    case State::CONN_STARTING:
+        if (micros() - eventStart >= connWindowOffset) {
+            setState(State::CONN_RX);
+            err = radio.startReceive();
+            eventStart = micros();
+            if (err == RADIOLIB_ERR_NONE) {
+                Serial.print(F("Waiting for first packet ... "));
+            } else {
+                sendError("Failed to start receiving", err);
+                setState(State::IDLE);
+            }
+        }
+        return;
+    case State::CONN_TX:
+        if (operationCompleted) {
+            operationCompleted = false;
+            if (txError == RADIOLIB_ERR_NONE) {
+                Serial.println(F("success"));
+            } else {
+                sendError("failed", txError);
+            }
+            setState(State::CONN_TX_SLEEP);
+        }
+        return;
+    case State::CONN_RX:
+        if (operationCompleted) {
+            operationCompleted = false;
+            if (readPacket(packet)) {
+                if (packet.getPacketType() == loraconn::PacketType::CONN_DATA) {
+                    loraconn::ConnectionData connData{std::move(packet)};
+                    if (connData.connectionIdentifierMatches(connId)) {
+                        uint8_t length = connData.getPayloadLength();
+                        if (length == 4) {
+                            uint8_t payload[length];
+                            connData.getPayload(payload);
+                            counter = (payload[0] << 24) | (payload[1] << 16) | (payload[2] << 8) | payload[3];
+                            Serial.print(F("Received value: "));
+                            Serial.println(counter);
+                        } else {
+                            Serial.println(F("Invalid connection data payload"));
+                        }
+
+                    } else {
+                        Serial.println(F("Ignoring data from a different connection"));
+                    }
+                } else if (packet.getPacketType() == loraconn::PacketType::DISCONN_REQ) {
+                    loraconn::DisconnectionRequest disconnRequest{std::move(packet)};
+                    if (disconnRequest.connectionIdentifierMatches(connId)) {
+                        Serial.println("Disconnecting");
+                        setState(State::IDLE);
+                    } else {
+                        Serial.println(F("Ignoring data from a different connection"));
+                    }
+                } else {
+                    Serial.println(F("Ignoring packet of an incorrect type"));
+                }
+            } else {
+                Serial.println(F("Ignoring packet of incorrect protocol"));
+            }
+        } else if (micros() - eventStart >= connWindowSize && !currentlyReceivingPacket()) {
+            Serial.println(F("Missed packet"));
+            setState(State::CONN_RX_SLEEP);
+        }
+        return;
+    case State::CONN_TX_SLEEP:
+        if (micros() - eventStart >= connWindowInterval) {
+            setState(State::CONN_RX);
+            err = radio.startReceive();
+            eventStart = micros();
+            if (err == RADIOLIB_ERR_NONE) {
+                Serial.print(F("Waiting for next packet ... "));
+            } else {
+                sendError("Failed to start receiving", err);
+                setState(State::IDLE);
+            }
+        }
+        return;
+    case State::CONN_RX_SLEEP:
+        if (micros() - eventStart >= connWindowInterval) {
+            setState(State::CONN_TX);
+            counter += 1;
+            uint8_t payload[4];
+            payload[0] = counter >> 24;
+            payload[1] = (counter >> 16) & 0xff;
+            payload[2] = (counter >> 8) & 0xff;
+            payload[3] = counter & 0xff;
+            loraconn::ConnectionData connData(4);
+            connData.setConnectionIdentifier(connId);
+            connData.setSequenceNumber(lastSequenceNumber);
+            connData.setNextExpectedSequenceNumber(!lastSequenceNumber);
+            connData.setPayload(payload, 4);
+            txError = startTransmitting(connData);
+        }
+        return;
+    default:
+        Serial.println("Invalid state");
+        while (true);
+    }
 }
