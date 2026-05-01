@@ -204,6 +204,8 @@ void setup()
         terminateWithError("Current limit intialization failed", err);
     }
     radio.setDio1Action(onOperationCompleted);
+
+    performSetup();
 }
 
 void loop(void)
