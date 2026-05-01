@@ -106,7 +106,7 @@ bool loraconn::ConnectionData::getSequenceNumber() const
 
 void loraconn::ConnectionData::setSequenceNumber(bool sequenceNumber)
 {
-    _raw[2] = (_raw[2] & ~SEQNO_MASK) & (static_cast<uint8_t>(sequenceNumber) << 3);
+    _raw[2] = (_raw[2] & ~SEQNO_MASK) | (static_cast<uint8_t>(sequenceNumber) << 3);
 }
 
 bool loraconn::ConnectionData::getNextExpectedSequenceNumber() const
@@ -116,7 +116,7 @@ bool loraconn::ConnectionData::getNextExpectedSequenceNumber() const
 
 void loraconn::ConnectionData::setNextExpectedSequenceNumber(bool sequenceNumber)
 {
-    _raw[2] = (_raw[2] & ~NSQN_MASK) & (static_cast<uint8_t>(sequenceNumber) << 4);
+    _raw[2] = (_raw[2] & ~NSQN_MASK) | (static_cast<uint8_t>(sequenceNumber) << 4);
 }
 
 void loraconn::ConnectionData::getConnectionIdentifier(ConnectionIdentifier &out) const
@@ -151,7 +151,7 @@ void loraconn::ConnectionData::getPayload(uint8_t *out) const
 
 void loraconn::ConnectionData::setPayload(uint8_t *buf, uint8_t length)
 {
-    assert(length < payloadCapacity);
+    assert(length <= payloadCapacity);
     setPayloadLength(length);
     memcpy(data(3), buf, length);
 }

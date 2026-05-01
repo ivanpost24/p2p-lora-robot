@@ -21,14 +21,14 @@ static constexpr int LORA_BUSY  = 13;
 static constexpr int BUTTON     = 0;
 
 /****************LoRa parameters (you need to fill these params)******************/
-static constexpr uint8_t SF = 9;
+static constexpr uint8_t SF = 7;
 static constexpr int8_t TX_PWR = 20;
 static constexpr uint8_t CR = 5;
 static constexpr uint8_t SYNC_WORD = (uint8_t)0x34;
 static constexpr uint16_t PREAMBLE = 8;
 
 static constexpr loraconn::MACAddress macAddress = {0x58, 0x02, 0x34, 0x00, 0xfe, 0x54};
-static constexpr unsigned long rxWindows[] = {15000, 20000, 25000, 35000, 45000, 55000, 155000, 310000};
+static constexpr unsigned long rxWindows[] = {25000, 30000, 35000, 45000, 55000, 65000, 165000, 320000};
 static constexpr unsigned long rxWindow = rxWindows[SF - 5];
 static constexpr unsigned long advEventLength = 1000000;
 
@@ -143,11 +143,12 @@ static uint16_t tune(uint8_t channel)
 
     Serial.print(F("Changed channel to "));
     Serial.println(channel);
+    return 0;
 }
 
 static uint16_t startTransmitting(const loraconn::Packet& packet)
 {
-    return radio.startTransmit(packet.getData(), packet.getLength());
+    return radio.startTransmit(packet.getRaw(), packet.getLength());
 }
 
 static bool readPacket(loraconn::Packet& out) {
@@ -160,8 +161,10 @@ static bool readPacket(loraconn::Packet& out) {
     if (err != RADIOLIB_ERR_NONE) {
         Serial.printf("Failed to receive packet (error code %d)\n", err);
         return false;
-    } else if (!out.setData(buf, length)) {
+    } else if (!out.setRaw(buf, length)) {
         Serial.println(F("Ignoring non-LoRaConn packet"));
+        return false;
+    } else {
         return true;
     }
 }
@@ -209,8 +212,8 @@ void advertise()
 {
     loraconn::Advertisement adv;
     adv.setAdvertiserAddress(macAddress);
-    Serial.print(F("Starting advertisement ... "));
     setState(State::ADV_TX);
+    Serial.print(F("Starting advertisement ... "));
     eventStart = micros();
     txError = startTransmitting(adv);
 }
@@ -247,7 +250,7 @@ void loop(void)
             operationCompleted = false;
             if (readPacket(packet)) {
                 if (packet.getPacketType() == loraconn::PacketType::CONN_REQ) {
-                    loraconn::ConnectionRequest connRequest(std::move(packet));
+                    loraconn::ConnectionRequest connRequest(packet);
                     if (connRequest.advertiserAddressMatches(macAddress)) {
                         eventStart = micros();
                         err = radio.finishReceive();
@@ -308,7 +311,7 @@ void loop(void)
             operationCompleted = false;
             if (readPacket(packet)) {
                 if (packet.getPacketType() == loraconn::PacketType::CONN_DATA) {
-                    loraconn::ConnectionData connData{std::move(packet)};
+                    loraconn::ConnectionData connData(packet);
                     if (connData.connectionIdentifierMatches(connId)) {
                         uint8_t length = connData.getPayloadLength();
                         if (length == 4) {
@@ -317,15 +320,20 @@ void loop(void)
                             counter = (payload[0] << 24) | (payload[1] << 16) | (payload[2] << 8) | payload[3];
                             Serial.print(F("Received value: "));
                             Serial.println(counter);
+                            setState(State::CONN_RX_SLEEP);
+                            err = radio.finishReceive();
+                            operationCompleted = false;
+                            if (err != RADIOLIB_ERR_NONE) {
+                                sendError("Failed to finish receiving", err);
+                            }
                         } else {
                             Serial.println(F("Invalid connection data payload"));
                         }
-
                     } else {
                         Serial.println(F("Ignoring data from a different connection"));
                     }
                 } else if (packet.getPacketType() == loraconn::PacketType::DISCONN_REQ) {
-                    loraconn::DisconnectionRequest disconnRequest{std::move(packet)};
+                    loraconn::DisconnectionRequest disconnRequest(packet);
                     if (disconnRequest.connectionIdentifierMatches(connId)) {
                         Serial.println("Disconnecting");
                         setState(State::IDLE);
@@ -340,14 +348,14 @@ void loop(void)
             }
         } else if (micros() - eventStart >= connWindowSize && !currentlyReceivingPacket()) {
             Serial.println(F("Missed packet"));
-            setState(State::CONN_RX_SLEEP);
+            setState(State::IDLE);
         }
         return;
     case State::CONN_TX_SLEEP:
         if (micros() - eventStart >= connWindowInterval) {
             setState(State::CONN_RX);
-            err = radio.startReceive();
             eventStart = micros();
+            err = radio.startReceive();
             if (err == RADIOLIB_ERR_NONE) {
                 Serial.print(F("Waiting for next packet ... "));
             } else {
@@ -357,7 +365,7 @@ void loop(void)
         }
         return;
     case State::CONN_RX_SLEEP:
-        if (micros() - eventStart >= connWindowInterval) {
+        if (micros() - eventStart >= connWindowInterval + 5000) {
             setState(State::CONN_TX);
             counter += 1;
             uint8_t payload[4];
@@ -370,7 +378,9 @@ void loop(void)
             connData.setSequenceNumber(lastSequenceNumber);
             connData.setNextExpectedSequenceNumber(!lastSequenceNumber);
             connData.setPayload(payload, 4);
+            eventStart = micros();
             txError = startTransmitting(connData);
+            Serial.print(F("Started transmitting ... "));
         }
         return;
     default:

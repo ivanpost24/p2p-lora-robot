@@ -72,7 +72,7 @@ struct Packet
     : _capacity(capacity)
     {
         assert(_capacity >= headerLength);
-        _dataLength = 0;
+        _dataLength = capacity - headerLength;
         _raw = new uint8_t[_capacity];
         memcpy(_raw, PROTOCOL_ID, 2);
     }
@@ -144,18 +144,18 @@ struct Packet
         swap(lhs._raw, rhs._raw);
     }
 
-    inline const uint8_t *getData() const
+    inline const uint8_t *getRaw() const
     {
         return _raw;
     }
 
-    bool setData(uint8_t *buf, uint8_t length)
+    bool setRaw(uint8_t *buf, uint8_t length)
     {
         assert(length <= _capacity);
         assert(length >= headerLength);
         if (isLoRaConnPacket(buf)) {
             memcpy(_raw, buf, length);
-            _dataLength = length;
+            _dataLength = length - headerLength;
             return true;
         } else {
             return false;
@@ -182,13 +182,13 @@ protected:
 
     inline const uint8_t *data(uint8_t index) const
     {
-        assert(index < _dataLength);
+        assert(index <= _dataLength);
         return _raw + headerLength + index;
     }
 
     inline uint8_t *data(uint8_t index)
     {
-        assert(index < _dataLength);
+        assert(index <= _dataLength);
         return _raw + headerLength + index;
     }
 
