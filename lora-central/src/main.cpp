@@ -10,14 +10,14 @@ on both transmitter and receiver:
 #include <RadioLib.h>
 #include "loraconn.hpp"
 
-/// @brief Prepare to accept a connection from the central device.
+/// @brief Prepare to initiate a connection with the peripheral device.
 ///
-/// This function is called right after receiving a connection request.
-/// Return 0 at the end of the function to accept. If you
-/// return another value instead, the device will not accept the request.
-/// @return `0` if you wish to accept the request, and a different value if you wish
-///     to not accept the request.
-extern int onConnectionRequested();
+/// This function is called right before transmitting a connection request.
+/// Return 0 at the end of the function to continue connecting. If you
+/// return another value instead, the device will not attempt to connect.
+/// @return `0` if you wish to continue connecting, and a different if you wish
+///     to not attempt to connect.
+extern int onPeripheralDetected();
 
 /// @brief Prepare the next packet for transmission.
 ///
@@ -28,8 +28,8 @@ extern int onConnectionRequested();
 /// @param data Output buffer which will contain the data you wish to transmit.
 /// @param capacity Capacity of the output buffer.
 /// @param len Length of the output buffer.
-/// @return `0` if you wish to continue the connection, and a different if you wish
-///     to terminate it.
+/// @return `0` if you wish to continue the connection, and a different value
+///     if you wish to terminate it.
 extern int prepareTxPacket(uint8_t *data, uint8_t capacity, uint8_t& len);
 
 /// @brief Process a received packet.
@@ -54,25 +54,23 @@ static constexpr int LORA_DIO1  = 14;      // DIO1 switch
 static constexpr int LORA_BUSY  = 13;
 static constexpr int BUTTON     = 0;
 
-/**************** LoRa parameters ******************/
+/****************LoRa parameters (you need to fill these params)******************/
 static constexpr uint8_t SF = 7;
 static constexpr int8_t TX_PWR = 20;
 static constexpr uint8_t CR = 5;
 static constexpr uint8_t SYNC_WORD = (uint8_t)0x34;
 static constexpr uint16_t PREAMBLE = 8;
 
-static constexpr loraconn::MACAddress macAddress = {0x58, 0x02, 0x34, 0x00, 0xfe, 0x54};
-static constexpr unsigned long advRxWindow = 35000;
-static constexpr unsigned long advEventLength = 1000000;
-static constexpr unsigned long centralRxWindow = 25000;
+static constexpr loraconn::MACAddress peripheralAddress = {0x58, 0x02, 0x34, 0x00, 0xfe, 0x54};
+static constexpr unsigned long connWindowOffset = 100000;
+static constexpr unsigned long peripheralRxWindow = 25000;
 static constexpr unsigned long txDelay = 500;
 
 enum class State
 {
     IDLE,
-    ADV_TX,
-    ADV_RX,
-    ADV_SLEEP,
+    SCAN_TX,
+    SCAN_RX,
     CONN_STARTING,
     CONN_TX,
     CONN_RX,
@@ -83,8 +81,8 @@ enum class State
 static volatile State state(State::IDLE);
 static volatile bool operationCompleted = false;
 static volatile uint16_t txError = RADIOLIB_ERR_NONE;
-static volatile unsigned long connWindowOffset = 0;
-static volatile unsigned long connRxWindow = 0;
+static volatile uint8_t channel = loraconn::ADVERTISING_CHANNEL;
+static volatile unsigned long rxWindow = 0;
 static volatile unsigned long eventStart = 0;
 static loraconn::ConnectionIdentifier connId;
 static uint8_t buf[255];
@@ -137,7 +135,7 @@ static uint16_t tune(uint8_t channel)
 
     Serial.print(F("Changed channel to "));
     Serial.println(channel);
-    return 0;
+    return RADIOLIB_ERR_NONE;
 }
 
 static uint16_t startTransmitting(const loraconn::Packet& packet)
@@ -153,7 +151,7 @@ static bool readPacket(loraconn::Packet& out) {
     }
     int err = radio.readData(buf, length);
     if (err != RADIOLIB_ERR_NONE) {
-        Serial.printf("Failed to receive packet (error code %d)\n", err);
+        sendError("Failed to receive packet", err);
         return false;
     } else if (!out.setRaw(buf, length)) {
         Serial.println(F("Ignoring non-LoRaConn packet"));
@@ -173,7 +171,7 @@ void setup()
     Serial.begin(115200);
 
     // initialize SX1262 with default settings
-    Serial.print(F("Initializing ... "));
+    Serial.print(F("[SX1262] Initializing ... "));
     int err = radio.begin();
     if (err == RADIOLIB_ERR_NONE) {
         Serial.println(F("success!"));
@@ -185,13 +183,13 @@ void setup()
     if (err != RADIOLIB_ERR_NONE) {
         terminateWithError("SF initialization failed", err);
     }
-    Serial.print("Spreading factor:\t\t");
+    Serial.print("[SX1262] Spreading Factor:\t\t");
     Serial.println(SF);
     err = radio.setOutputPower(TX_PWR);
     if (err != RADIOLIB_ERR_NONE) {
         terminateWithError("Output Power initialization failed", err);
     }
-    Serial.print("Transmit power:\t\t");
+    Serial.print("[SX1262] Transmit Power:\t\t");
     Serial.print(TX_PWR);
     Serial.println(F(" dBm"));
 
@@ -202,26 +200,22 @@ void setup()
     radio.setDio1Action(onOperationCompleted);
 }
 
-void advertise()
-{
-    loraconn::Advertisement adv;
-    adv.setAdvertiserAddress(macAddress);
-    adv.setCentralRxWindow(static_cast<uint16_t>(centralRxWindow / 100));
-    state = State::ADV_TX;
-    Serial.print(F("Starting advertisement ... "));
-    eventStart = micros();
-    txError = startTransmitting(adv);
-}
-
 void loop(void)
 {
     uint16_t err;
     switch (state) {
     case State::IDLE:
         tune(loraconn::ADVERTISING_CHANNEL);
-        advertise();
+        state = State::SCAN_RX;
+        err = radio.startReceive();
+        if (err == RADIOLIB_ERR_NONE) {
+            Serial.print(F("Waiting for advertisement ... "));
+        } else {
+            sendError("Failed to start receiving", err);
+            state = State::IDLE;
+        }
         return;
-    case State::ADV_TX:
+    case State::SCAN_TX:
         if (operationCompleted) {
             operationCompleted = false;
             if (txError == RADIOLIB_ERR_NONE) {
@@ -229,44 +223,49 @@ void loop(void)
             } else {
                 sendError("failed", txError);
             }
-            state = State::ADV_RX;
-            err = radio.startReceive();
+            state = State::CONN_STARTING;
             eventStart = micros();
-            if (err == RADIOLIB_ERR_NONE) {
-                Serial.print(F("Waiting for response ... "));
-            } else {
-                sendError("Failed to start receiving", err);
-                state = State::IDLE;
-            }
         }
         return;
-    case State::ADV_RX:
+    case State::SCAN_RX:
         if (operationCompleted) {
             operationCompleted = false;
             if (readPacket(packet)) {
-                if (packet.getPacketType() == loraconn::PacketType::CONN_REQ) {
-                    loraconn::ConnectionRequest connRequest(packet);
-                    if (connRequest.advertiserAddressMatches(macAddress)) {
-                        Serial.println(F("Received connection request!"));
+                if (packet.getPacketType() == loraconn::PacketType::ADVERT) {
+                    loraconn::Advertisement advertisement(packet);
+                    if (advertisement.advertiserAddressMatches(peripheralAddress)) {
+                        Serial.println(F("Found peripheral device!"));
                         eventStart = micros();
                         err = radio.finishReceive();
                         operationCompleted = false;
                         if (err != RADIOLIB_ERR_NONE) {
                             sendError("Failed to finish receiving", err);
                         }
-                        err = onConnectionRequested();
+                        err = onPeripheralDetected();
                         if (err == 0) {
-                            connRequest.getConnectionIdentifier(connId);
-                            connWindowOffset = static_cast<unsigned long>(connRequest.getWindowOffset()) * 100;
-                            connRxWindow = static_cast<unsigned long>(connRequest.getPeripheralRxWindow()) * 100;
-                            tune(connRequest.getChannel());
-                            state = State::CONN_STARTING;
+                            rxWindow = static_cast<unsigned long>(advertisement.getCentralRxWindow()) * 100;
+                            long randomId = random();
+                            connId.at(0) = (randomId >> 8) & 0xff;
+                            connId.at(1) = randomId & 0xff;
+                            do {
+                                channel = random() & 0b11111;
+                            } while (channel == 31);
+                            loraconn::ConnectionRequest connRequest;
+                            connRequest.setAdvertiserAddress(peripheralAddress);
+                            connRequest.setChannel(channel);
+                            connRequest.setConnectionIdentifier(connId);
+                            connRequest.setWindowOffset(static_cast<uint16_t>(connWindowOffset / 100));
+                            connRequest.setPeripheralRxWindow(static_cast<uint16_t>(peripheralRxWindow / 100));
+
+                            state = State::SCAN_TX;
+                            txError = startTransmitting(connRequest);
+                            Serial.print(F("Starting connection request ... "));
                         } else {
-                            sendError("Not accepting connection request", err);
+                            sendError("Not attempting to connect", err);
                             state = State::IDLE;
                         }
                     } else {
-                        Serial.println(F("Ignoring connection request to different device"));
+                        Serial.println(F("Ignoring advertisement from incorrect device"));
                     }
                 } else {
                     Serial.println(F("Ignoring packet of incorrect type"));
@@ -274,25 +273,15 @@ void loop(void)
             } else {
                 Serial.println(F("Ignoring packet of incorrect protocol"));
             }
-        } else if (micros() - eventStart >= advRxWindow && !currentlyReceivingPacket()) {
-            Serial.println("No response to advertisement");
-            state = State::ADV_SLEEP;
-        }
-        return;
-    case State::ADV_SLEEP:
-        if (micros() - eventStart >= advEventLength) {
-            advertise();
         }
         return;
     case State::CONN_STARTING:
         if (micros() - eventStart >= connWindowOffset) {
-            state = State::CONN_RX;
-            err = radio.startReceive();
-            eventStart = micros();
+            err = tune(channel);
             if (err == RADIOLIB_ERR_NONE) {
-                Serial.print(F("Waiting for first packet ... "));
+                state = State::CONN_TX_SLEEP;
+                eventStart = micros();
             } else {
-                sendError("Failed to start receiving", err);
                 state = State::IDLE;
             }
         }
@@ -305,7 +294,6 @@ void loop(void)
             } else {
                 sendError("failed", txError);
             }
-
             state = State::CONN_RX;
             err = radio.startReceive();
             if (err == RADIOLIB_ERR_NONE) {
@@ -356,7 +344,7 @@ void loop(void)
             } else {
                 Serial.println(F("Ignoring packet of incorrect protocol"));
             }
-        } else if (micros() - eventStart >= connRxWindow && !currentlyReceivingPacket()) {
+        } else if (micros() - eventStart >= rxWindow && !currentlyReceivingPacket()) {
             Serial.println(F("Missed packet"));
             state = State::IDLE;
         }

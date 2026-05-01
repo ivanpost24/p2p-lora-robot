@@ -72,7 +72,7 @@ struct Packet
     : _capacity(capacity)
     {
         assert(_capacity >= headerLength);
-        _dataLength = 0;
+        _dataLength = capacity - headerLength;
         _raw = new uint8_t[_capacity];
         memcpy(_raw, PROTOCOL_ID, 2);
     }
@@ -144,18 +144,18 @@ struct Packet
         swap(lhs._raw, rhs._raw);
     }
 
-    inline const uint8_t *getData() const
+    inline const uint8_t *getRaw() const
     {
         return _raw;
     }
 
-    bool setData(uint8_t *buf, uint8_t length)
+    bool setRaw(uint8_t *buf, uint8_t length)
     {
         assert(length <= _capacity);
         assert(length >= headerLength);
         if (isLoRaConnPacket(buf)) {
             memcpy(_raw, buf, length);
-            _dataLength = length;
+            _dataLength = length - headerLength;
             return true;
         } else {
             return false;
@@ -182,13 +182,13 @@ protected:
 
     inline const uint8_t *data(uint8_t index) const
     {
-        assert(index < _dataLength);
+        assert(index <= _dataLength);
         return _raw + headerLength + index;
     }
 
     inline uint8_t *data(uint8_t index)
     {
-        assert(index < _dataLength);
+        assert(index <= _dataLength);
         return _raw + headerLength + index;
     }
 
@@ -198,7 +198,7 @@ struct Advertisement : public Packet
 {
 
     static constexpr PacketType type = PacketType::ADVERT;
-    static constexpr uint8_t dataLength = 6;
+    static constexpr uint8_t dataLength = 8;
 
     Advertisement() : Packet(headerLength + dataLength)
     {
@@ -234,7 +234,11 @@ struct Advertisement : public Packet
     }
 
     void getAdvertiserAddress(MACAddress& out) const;
+    bool advertiserAddressMatches(const MACAddress& other) const;
     void setAdvertiserAddress(const MACAddress& advertiserAddress);
+
+    uint16_t getCentralRxWindow() const;
+    void setCentralRxWindow(uint16_t window);
 
 };
 
@@ -284,14 +288,11 @@ struct ConnectionRequest: public Packet
     void getConnectionIdentifier(ConnectionIdentifier& out) const;
     void setConnectionIdentifier(const ConnectionIdentifier& connectionIdentifier);
 
-    uint16_t getWindowSize() const;
-    void setWindowSize(uint16_t windowSize);
+    uint16_t getPeripheralRxWindow() const;
+    void setPeripheralRxWindow(uint16_t window);
 
     uint16_t getWindowOffset() const;
     void setWindowOffset(uint16_t windowOffset);
-
-    uint16_t getWindowInterval() const;
-    void setWindowInterval(uint16_t windowInterval);
 
     uint8_t getChannel() const;
     void setChannel(uint8_t firstChannel);
@@ -307,6 +308,7 @@ struct ConnectionData : public Packet
     ConnectionData(uint8_t payloadCapacity)
     : Packet(headerLength + dataHeaderLength + payloadCapacity), payloadCapacity{payloadCapacity}
     {
+        assert(payloadCapacity <= UINT8_MAX - headerLength - dataHeaderLength);
         this->setPacketType(type);
         this->setPayloadLength(payloadCapacity);
     }
@@ -331,12 +333,6 @@ struct ConnectionData : public Packet
     ConnectionData(ConnectionData&& other) : Packet(other)
     {}
 
-    bool getSequenceNumber() const;
-    void setSequenceNumber(bool sequenceNumber);
-
-    bool getNextExpectedSequenceNumber() const;
-    void setNextExpectedSequenceNumber(bool sequenceNumber);
-
     void getConnectionIdentifier(ConnectionIdentifier& out) const;
     bool connectionIdentifierMatches(const ConnectionIdentifier& connId) const;
     void setConnectionIdentifier(const ConnectionIdentifier& connectionIdentifier);
@@ -346,6 +342,7 @@ struct ConnectionData : public Packet
 
     void getPayload(uint8_t *out) const;
     void setPayload(uint8_t *buf, uint8_t length);
+    const uint8_t *payload() const;
     uint8_t *payload();
 
 private:
