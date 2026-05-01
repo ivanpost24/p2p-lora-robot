@@ -10,6 +10,12 @@ on both transmitter and receiver:
 #include <RadioLib.h>
 #include "loraconn.hpp"
 
+/// @brief Perform additional setup after the radio has been configured.
+///
+/// This function is called at the end of the Arduino `setup()` function after
+/// the radio has been configured.
+extern void performSetup();
+
 /// @brief Prepare to initiate a connection with the peripheral device.
 ///
 /// This function is called right before transmitting a connection request.
