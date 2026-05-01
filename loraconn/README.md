@@ -65,14 +65,14 @@ shall listen on channel 31 for at least the following durations:
 
 | SF  | RX window duration |
 | --- | ------------------ |
-| 5   | 15 ms              |
-| 6   | 20 ms              |
-| 7   | 25 ms              |
-| 8   | 35 ms              |
-| 9   | 50 ms              |
-| 10  | 75 ms              |
-| 11  | 155 ms             |
-| 12  | 260 ms             |
+| 5   | 25 ms              |
+| 6   | 30 ms              |
+| 7   | 35 ms              |
+| 8   | 45 ms              |
+| 9   | 60 ms              |
+| 10  | 85 ms              |
+| 11  | 165 ms             |
+| 12  | 270 ms             |
 
 Advertisements contain a peripheral device address and a requested RX window length for the central device, which
 should be chosen based on the spreading factor and other encoding parameters.
