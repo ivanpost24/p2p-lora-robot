@@ -308,6 +308,7 @@ struct ConnectionData : public Packet
     ConnectionData(uint8_t payloadCapacity)
     : Packet(headerLength + dataHeaderLength + payloadCapacity), payloadCapacity{payloadCapacity}
     {
+        assert(payloadCapacity <= UINT8_MAX - headerLength - dataHeaderLength);
         this->setPacketType(type);
         this->setPayloadLength(payloadCapacity);
     }
@@ -341,6 +342,7 @@ struct ConnectionData : public Packet
 
     void getPayload(uint8_t *out) const;
     void setPayload(uint8_t *buf, uint8_t length);
+    const uint8_t *payload() const;
     uint8_t *payload();
 
 private:

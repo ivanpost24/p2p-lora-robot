@@ -120,6 +120,7 @@ uint8_t loraconn::ConnectionData::getPayloadLength() const
 void loraconn::ConnectionData::setPayloadLength(uint8_t payloadLength)
 {
     *data(2) = payloadLength;
+    setDataLength(dataHeaderLength + payloadLength);
 }
 
 void loraconn::ConnectionData::getPayload(uint8_t *out) const
@@ -132,6 +133,11 @@ void loraconn::ConnectionData::setPayload(uint8_t *buf, uint8_t length)
     assert(length <= payloadCapacity);
     setPayloadLength(length);
     memcpy(data(3), buf, length);
+}
+
+const uint8_t *loraconn::ConnectionData::payload() const
+{
+    return data(3);
 }
 
 uint8_t *loraconn::ConnectionData::payload()

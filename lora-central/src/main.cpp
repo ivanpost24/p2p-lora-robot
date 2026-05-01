@@ -10,6 +10,40 @@ on both transmitter and receiver:
 #include <RadioLib.h>
 #include "loraconn.hpp"
 
+/// @brief Prepare to initiate a connection with the peripheral device.
+///
+/// This function is called right before transmitting a connection request.
+/// Return 0 at the end of the function to continue connecting. If you
+/// return another value instead, the device will not attempt to connect.
+/// @return `0` if you wish to continue connecting, and a different if you wish
+///     to not attempt to connect.
+extern int onPeripheralDetected();
+
+/// @brief Prepare the next packet for transmission.
+///
+/// This function is called right before transmitting a packet. It should
+/// modify the provided buffer and length for the data you wish to transmit.
+/// Return 0 at the end of the function to perform a transmission. If you
+/// return another value instead, the device will terminate the connection.
+/// @param data Output buffer which will contain the data you wish to transmit.
+/// @param capacity Capacity of the output buffer.
+/// @param len Length of the output buffer.
+/// @return `0` if you wish to continue the connection, and a different value
+///     if you wish to terminate it.
+extern int prepareTxPacket(uint8_t *data, uint8_t capacity, uint8_t& len);
+
+/// @brief Process a received packet.
+///
+/// This function is called right after receiving a packet and provides the received
+/// data as input. Return true at the end of the function to indicate that the device
+/// should stop listening for data (because the received data is valid). Return false to
+/// ask the device to continue listening until timeout.
+/// @param data Input buffer which contains the data received.
+/// @param len Length of the input buffer.
+/// @return `0` if you want the device to stop listening and switch to transmission,
+///     another value if you want the device to continue listening.
+extern int onReceive(const uint8_t *data, uint8_t len);
+
 /**************** Pin assignment for the Heltec V3 board ******************/
 static constexpr int LORA_CS    = 8;      // Chip select pin
 static constexpr int LORA_MOSI  = 10;
@@ -41,52 +75,19 @@ enum class State
     CONN_TX,
     CONN_RX,
     CONN_TX_SLEEP,
+    DISCONN_TX,
 };
 
 static volatile State state(State::IDLE);
 static volatile bool operationCompleted = false;
+static volatile uint16_t txError = RADIOLIB_ERR_NONE;
 static volatile uint8_t channel = loraconn::ADVERTISING_CHANNEL;
 static volatile unsigned long rxWindow = 0;
-static volatile uint16_t txError = RADIOLIB_ERR_NONE;
 static volatile unsigned long eventStart = 0;
 static loraconn::ConnectionIdentifier connId;
 static uint8_t buf[255];
 static loraconn::Packet packet(255);
-
-
-static int counter = 0;
-
-static void setState(State _state)
-{
-    state = _state;
-    Serial.print(F("State changed to "));
-    switch (state) {
-    case State::IDLE:
-        Serial.println(F("IDLE"));
-        break;
-    case State::SCAN_TX:
-        Serial.println(F("SCAN_TX"));
-        break;
-    case State::SCAN_RX:
-        Serial.println(F("SCAN_RX"));
-        break;
-    case State::CONN_STARTING:
-        Serial.println(F("CONN_STARTING"));
-        break;
-    case State::CONN_TX:
-        Serial.println(F("CONN_TX"));
-        break;
-    case State::CONN_RX:
-        Serial.println(F("CONN_RX"));
-        break;
-    case State::CONN_TX_SLEEP:
-        Serial.println(F("CONN_TX_SLEEP"));
-        break;
-    default:
-        Serial.println(F("UNKNOWN"));
-        break;
-    }
-}
+static loraconn::ConnectionData txData(249);
 
 // this function is called when a complete packet
 // is received by the module
@@ -205,13 +206,13 @@ void loop(void)
     switch (state) {
     case State::IDLE:
         tune(loraconn::ADVERTISING_CHANNEL);
-        setState(State::SCAN_RX);
+        state = State::SCAN_RX;
         err = radio.startReceive();
         if (err == RADIOLIB_ERR_NONE) {
             Serial.print(F("Waiting for advertisement ... "));
         } else {
             sendError("Failed to start receiving", err);
-            setState(State::IDLE);
+            state = State::IDLE;
         }
         return;
     case State::SCAN_TX:
@@ -222,7 +223,7 @@ void loop(void)
             } else {
                 sendError("failed", txError);
             }
-            setState(State::CONN_STARTING);
+            state = State::CONN_STARTING;
             eventStart = micros();
         }
         return;
@@ -240,23 +241,29 @@ void loop(void)
                         if (err != RADIOLIB_ERR_NONE) {
                             sendError("Failed to finish receiving", err);
                         }
-                        rxWindow = static_cast<unsigned long>(advertisement.getCentralRxWindow()) * 100;
-                        long randomId = random();
-                        connId.at(0) = (randomId >> 8) & 0xff;
-                        connId.at(1) = randomId & 0xff;
-                        do {
-                            channel = random() & 0b11111;
-                        } while (channel == 31);
-                        loraconn::ConnectionRequest connRequest;
-                        connRequest.setAdvertiserAddress(peripheralAddress);
-                        connRequest.setChannel(channel);
-                        connRequest.setConnectionIdentifier(connId);
-                        connRequest.setWindowOffset(static_cast<uint16_t>(connWindowOffset / 100));
-                        connRequest.setPeripheralRxWindow(static_cast<uint16_t>(peripheralRxWindow / 100));
+                        err = onPeripheralDetected();
+                        if (err == 0) {
+                            rxWindow = static_cast<unsigned long>(advertisement.getCentralRxWindow()) * 100;
+                            long randomId = random();
+                            connId.at(0) = (randomId >> 8) & 0xff;
+                            connId.at(1) = randomId & 0xff;
+                            do {
+                                channel = random() & 0b11111;
+                            } while (channel == 31);
+                            loraconn::ConnectionRequest connRequest;
+                            connRequest.setAdvertiserAddress(peripheralAddress);
+                            connRequest.setChannel(channel);
+                            connRequest.setConnectionIdentifier(connId);
+                            connRequest.setWindowOffset(static_cast<uint16_t>(connWindowOffset / 100));
+                            connRequest.setPeripheralRxWindow(static_cast<uint16_t>(peripheralRxWindow / 100));
 
-                        setState(State::SCAN_TX);
-                        txError = startTransmitting(connRequest);
-                        Serial.print(F("Starting connection request ... "));
+                            state = State::SCAN_TX;
+                            txError = startTransmitting(connRequest);
+                            Serial.print(F("Starting connection request ... "));
+                        } else {
+                            sendError("Not attempting to connect", err);
+                            state = State::IDLE;
+                        }
                     } else {
                         Serial.println(F("Ignoring advertisement from incorrect device"));
                     }
@@ -269,19 +276,14 @@ void loop(void)
         }
         return;
     case State::CONN_STARTING:
-        if (micros() - eventStart >= connWindowOffset + 1500) {
-            setState(State::CONN_TX);
+        if (micros() - eventStart >= connWindowOffset) {
             err = tune(channel);
-            if (err != RADIOLIB_ERR_NONE) {
-                setState(State::IDLE);
+            if (err == RADIOLIB_ERR_NONE) {
+                state = State::CONN_TX_SLEEP;
+                eventStart = micros();
+            } else {
+                state = State::IDLE;
             }
-            uint8_t payload[4];
-            memset(payload, 0, 4);
-            loraconn::ConnectionData connData(4);
-            connData.setConnectionIdentifier(connId);
-            connData.setPayload(payload, 4);
-            eventStart = micros();
-            txError = startTransmitting(connData);
         }
         return;
     case State::CONN_TX:
@@ -292,13 +294,13 @@ void loop(void)
             } else {
                 sendError("failed", txError);
             }
-            setState(State::CONN_RX);
+            state = State::CONN_RX;
             err = radio.startReceive();
             if (err == RADIOLIB_ERR_NONE) {
                 Serial.print(F("Waiting for next packet ... "));
             } else {
                 sendError("Failed to start receiving", err);
-                setState(State::IDLE);
+                state = State::IDLE;
             }
             eventStart = micros();
         }
@@ -311,23 +313,20 @@ void loop(void)
                     loraconn::ConnectionData connData(packet);
                     if (connData.connectionIdentifierMatches(connId)) {
                         uint8_t length = connData.getPayloadLength();
-                        if (length == 4) {
-                            uint8_t payload[length];
-                            connData.getPayload(payload);
-                            counter = (payload[0] << 24) | (payload[1] << 16) | (payload[2] << 8) | payload[3];
-                            Serial.print(F("Received value: "));
-                            Serial.println(counter);
+                        uint8_t payload[length];
+                        connData.getPayload(payload);
+                        err = onReceive(payload, length);
+                        if (err == 0) {
                             err = radio.finishReceive();
                             operationCompleted = false;
                             if (err != RADIOLIB_ERR_NONE) {
                                 sendError("Failed to finish receiving", err);
                             }
-                            setState(State::CONN_TX_SLEEP);
+                            state = State::CONN_TX_SLEEP;
                             eventStart = micros();
                         } else {
-                            Serial.println(F("Invalid connection data payload"));
+                            sendError("Invalid connection data payload", err);
                         }
-
                     } else {
                         Serial.println(F("Ignoring data from a different connection"));
                     }
@@ -335,7 +334,7 @@ void loop(void)
                     loraconn::DisconnectionRequest disconnRequest(packet);
                     if (disconnRequest.connectionIdentifierMatches(connId)) {
                         Serial.println("Disconnecting");
-                        setState(State::IDLE);
+                        state = State::IDLE;
                     } else {
                         Serial.println(F("Ignoring data from a different connection"));
                     }
@@ -347,24 +346,40 @@ void loop(void)
             }
         } else if (micros() - eventStart >= rxWindow && !currentlyReceivingPacket()) {
             Serial.println(F("Missed packet"));
-            setState(State::IDLE);
+            state = State::IDLE;
         }
         return;
     case State::CONN_TX_SLEEP:
         if (micros() - eventStart >= txDelay) {
-            setState(State::CONN_TX);
-            counter += 1;
-            uint8_t payload[4];
-            payload[0] = counter >> 24;
-            payload[1] = (counter >> 16) & 0xff;
-            payload[2] = (counter >> 8) & 0xff;
-            payload[3] = counter & 0xff;
-            loraconn::ConnectionData connData(4);
-            connData.setConnectionIdentifier(connId);
-            connData.setPayload(payload, 4);
-            eventStart = micros();
-            txError = startTransmitting(connData);
-            Serial.print(F("Started transmitting ... "));
+            txData.setConnectionIdentifier(connId);
+            uint8_t length;
+            err = prepareTxPacket(txData.payload(), 249, length);
+            if (err == 0) {
+                state = State::CONN_TX;
+                txData.setPayloadLength(length);
+                eventStart = micros();
+                txError = startTransmitting(txData);
+                Serial.print(F("Started transmitting ... "));
+            } else {
+                state = State::DISCONN_TX;
+                loraconn::DisconnectionRequest disconnRequest;
+                disconnRequest.setConnectionIdentifier(connId);
+                eventStart = micros();
+                txError = startTransmitting(disconnRequest);
+                Serial.print(F("Disconnecting ... "));
+            }
+        }
+        return;
+    case State::DISCONN_TX:
+        if (operationCompleted) {
+            operationCompleted = false;
+            if (txError == RADIOLIB_ERR_NONE) {
+                Serial.println(F("success"));
+            } else {
+                sendError("failed", txError);
+            }
+
+            state = State::IDLE;
         }
         return;
     default:
