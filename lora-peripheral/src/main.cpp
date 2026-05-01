@@ -28,9 +28,10 @@ static constexpr uint8_t SYNC_WORD = (uint8_t)0x34;
 static constexpr uint16_t PREAMBLE = 8;
 
 static constexpr loraconn::MACAddress macAddress = {0x58, 0x02, 0x34, 0x00, 0xfe, 0x54};
-static constexpr unsigned long rxWindows[] = {25000, 30000, 35000, 45000, 55000, 65000, 165000, 320000};
-static constexpr unsigned long rxWindow = rxWindows[SF - 5];
+static constexpr unsigned long advRxWindow = 35000;
 static constexpr unsigned long advEventLength = 1000000;
+static constexpr unsigned long centralRxWindow = 25000;
+static constexpr unsigned long txDelay = 500;
 
 enum class State
 {
@@ -42,7 +43,6 @@ enum class State
     CONN_TX,
     CONN_RX,
     CONN_TX_SLEEP,
-    CONN_RX_SLEEP,
 };
 
 static volatile State state(State::IDLE);
@@ -50,9 +50,7 @@ static volatile bool operationCompleted = false;
 static volatile uint16_t txError = RADIOLIB_ERR_NONE;
 static volatile unsigned long eventStart = 0;
 static volatile unsigned long connWindowOffset = 0;
-static volatile unsigned long connWindowInterval = 0;
-static volatile unsigned long connWindowSize = 0;
-static volatile bool lastSequenceNumber = 0;
+static volatile unsigned long connRxWindow = 0;
 static loraconn::ConnectionIdentifier connId;
 static uint8_t buf[255];
 static loraconn::Packet packet(255);
@@ -87,9 +85,6 @@ static void setState(State _state)
         break;
     case State::CONN_TX_SLEEP:
         Serial.println(F("CONN_TX_SLEEP"));
-        break;
-    case State::CONN_RX_SLEEP:
-        Serial.println(F("CONN_RX_SLEEP"));
         break;
     default:
         Serial.println(F("UNKNOWN"));
@@ -212,6 +207,7 @@ void advertise()
 {
     loraconn::Advertisement adv;
     adv.setAdvertiserAddress(macAddress);
+    adv.setCentralRxWindow(static_cast<uint16_t>(centralRxWindow / 100));
     setState(State::ADV_TX);
     Serial.print(F("Starting advertisement ... "));
     eventStart = micros();
@@ -259,8 +255,7 @@ void loop(void)
                         }
                         connRequest.getConnectionIdentifier(connId);
                         connWindowOffset = static_cast<unsigned long>(connRequest.getWindowOffset()) * 100;
-                        connWindowInterval = static_cast<unsigned long>(connRequest.getWindowInterval()) * 100;
-                        connWindowSize = static_cast<unsigned long>(connRequest.getWindowSize()) * 100;
+                        connRxWindow = static_cast<unsigned long>(connRequest.getPeripheralRxWindow()) * 100;
                         tune(connRequest.getChannel());
                         setState(State::CONN_STARTING);
                     } else {
@@ -272,7 +267,7 @@ void loop(void)
             } else {
                 Serial.println(F("Ignoring packet of incorrect protocol"));
             }
-        } else if (micros() - eventStart >= rxWindow && !currentlyReceivingPacket()) {
+        } else if (micros() - eventStart >= advRxWindow && !currentlyReceivingPacket()) {
             Serial.println("No response to advertisement");
             setState(State::ADV_SLEEP);
         }
@@ -303,7 +298,16 @@ void loop(void)
             } else {
                 sendError("failed", txError);
             }
-            setState(State::CONN_TX_SLEEP);
+
+            setState(State::CONN_RX);
+            err = radio.startReceive();
+            if (err == RADIOLIB_ERR_NONE) {
+                Serial.print(F("Waiting for next packet ... "));
+            } else {
+                sendError("Failed to start receiving", err);
+                setState(State::IDLE);
+            }
+            eventStart = micros();
         }
         return;
     case State::CONN_RX:
@@ -320,12 +324,13 @@ void loop(void)
                             counter = (payload[0] << 24) | (payload[1] << 16) | (payload[2] << 8) | payload[3];
                             Serial.print(F("Received value: "));
                             Serial.println(counter);
-                            setState(State::CONN_RX_SLEEP);
                             err = radio.finishReceive();
                             operationCompleted = false;
                             if (err != RADIOLIB_ERR_NONE) {
                                 sendError("Failed to finish receiving", err);
                             }
+                            setState(State::CONN_TX_SLEEP);
+                            eventStart = micros();
                         } else {
                             Serial.println(F("Invalid connection data payload"));
                         }
@@ -346,26 +351,13 @@ void loop(void)
             } else {
                 Serial.println(F("Ignoring packet of incorrect protocol"));
             }
-        } else if (micros() - eventStart >= connWindowSize && !currentlyReceivingPacket()) {
+        } else if (micros() - eventStart >= connRxWindow && !currentlyReceivingPacket()) {
             Serial.println(F("Missed packet"));
             setState(State::IDLE);
         }
         return;
     case State::CONN_TX_SLEEP:
-        if (micros() - eventStart >= connWindowInterval) {
-            setState(State::CONN_RX);
-            eventStart = micros();
-            err = radio.startReceive();
-            if (err == RADIOLIB_ERR_NONE) {
-                Serial.print(F("Waiting for next packet ... "));
-            } else {
-                sendError("Failed to start receiving", err);
-                setState(State::IDLE);
-            }
-        }
-        return;
-    case State::CONN_RX_SLEEP:
-        if (micros() - eventStart >= connWindowInterval + 5000) {
+        if (micros() - eventStart >= txDelay) {
             setState(State::CONN_TX);
             counter += 1;
             uint8_t payload[4];
@@ -375,8 +367,6 @@ void loop(void)
             payload[3] = counter & 0xff;
             loraconn::ConnectionData connData(4);
             connData.setConnectionIdentifier(connId);
-            connData.setSequenceNumber(lastSequenceNumber);
-            connData.setNextExpectedSequenceNumber(!lastSequenceNumber);
             connData.setPayload(payload, 4);
             eventStart = micros();
             txError = startTransmitting(connData);

@@ -28,9 +28,9 @@ static constexpr uint8_t SYNC_WORD = (uint8_t)0x34;
 static constexpr uint16_t PREAMBLE = 8;
 
 static constexpr loraconn::MACAddress peripheralAddress = {0x58, 0x02, 0x34, 0x00, 0xfe, 0x54};
-static constexpr unsigned long connWindowOffset = 300000;
-static constexpr unsigned long connWindowInterval = 300000;
-static constexpr unsigned long connWindowSize = 250000;
+static constexpr unsigned long connWindowOffset = 100000;
+static constexpr unsigned long peripheralRxWindow = 25000;
+static constexpr unsigned long txDelay = 500;
 
 enum class State
 {
@@ -41,18 +41,18 @@ enum class State
     CONN_TX,
     CONN_RX,
     CONN_TX_SLEEP,
-    CONN_RX_SLEEP,
 };
 
 static volatile State state(State::IDLE);
 static volatile bool operationCompleted = false;
 static volatile uint8_t channel = loraconn::ADVERTISING_CHANNEL;
+static volatile unsigned long rxWindow = 0;
 static volatile uint16_t txError = RADIOLIB_ERR_NONE;
 static volatile unsigned long eventStart = 0;
-static volatile bool lastSequenceNumber = 0;
 static loraconn::ConnectionIdentifier connId;
 static uint8_t buf[255];
 static loraconn::Packet packet(255);
+
 
 static int counter = 0;
 
@@ -81,9 +81,6 @@ static void setState(State _state)
         break;
     case State::CONN_TX_SLEEP:
         Serial.println(F("CONN_TX_SLEEP"));
-        break;
-    case State::CONN_RX_SLEEP:
-        Serial.println(F("CONN_RX_SLEEP"));
         break;
     default:
         Serial.println(F("UNKNOWN"));
@@ -137,7 +134,7 @@ static uint16_t tune(uint8_t channel)
 
     Serial.print(F("Changed channel to "));
     Serial.println(channel);
-    return 0;
+    return RADIOLIB_ERR_NONE;
 }
 
 static uint16_t startTransmitting(const loraconn::Packet& packet)
@@ -243,6 +240,7 @@ void loop(void)
                         if (err != RADIOLIB_ERR_NONE) {
                             sendError("Failed to finish receiving", err);
                         }
+                        rxWindow = static_cast<unsigned long>(advertisement.getCentralRxWindow()) * 100;
                         long randomId = random();
                         connId.at(0) = (randomId >> 8) & 0xff;
                         connId.at(1) = randomId & 0xff;
@@ -253,9 +251,8 @@ void loop(void)
                         connRequest.setAdvertiserAddress(peripheralAddress);
                         connRequest.setChannel(channel);
                         connRequest.setConnectionIdentifier(connId);
-                        connRequest.setWindowOffset(connWindowOffset / 100);
-                        connRequest.setWindowInterval(connWindowInterval / 100);
-                        connRequest.setWindowSize(connWindowSize / 100);
+                        connRequest.setWindowOffset(static_cast<uint16_t>(connWindowOffset / 100));
+                        connRequest.setPeripheralRxWindow(static_cast<uint16_t>(peripheralRxWindow / 100));
 
                         setState(State::SCAN_TX);
                         txError = startTransmitting(connRequest);
@@ -282,8 +279,6 @@ void loop(void)
             memset(payload, 0, 4);
             loraconn::ConnectionData connData(4);
             connData.setConnectionIdentifier(connId);
-            connData.setSequenceNumber(0);
-            connData.setNextExpectedSequenceNumber(0);
             connData.setPayload(payload, 4);
             eventStart = micros();
             txError = startTransmitting(connData);
@@ -297,7 +292,15 @@ void loop(void)
             } else {
                 sendError("failed", txError);
             }
-            setState(State::CONN_TX_SLEEP);
+            setState(State::CONN_RX);
+            err = radio.startReceive();
+            if (err == RADIOLIB_ERR_NONE) {
+                Serial.print(F("Waiting for next packet ... "));
+            } else {
+                sendError("Failed to start receiving", err);
+                setState(State::IDLE);
+            }
+            eventStart = micros();
         }
         return;
     case State::CONN_RX:
@@ -314,12 +317,13 @@ void loop(void)
                             counter = (payload[0] << 24) | (payload[1] << 16) | (payload[2] << 8) | payload[3];
                             Serial.print(F("Received value: "));
                             Serial.println(counter);
-                            setState(State::CONN_RX_SLEEP);
                             err = radio.finishReceive();
                             operationCompleted = false;
                             if (err != RADIOLIB_ERR_NONE) {
                                 sendError("Failed to finish receiving", err);
                             }
+                            setState(State::CONN_TX_SLEEP);
+                            eventStart = micros();
                         } else {
                             Serial.println(F("Invalid connection data payload"));
                         }
@@ -341,26 +345,13 @@ void loop(void)
             } else {
                 Serial.println(F("Ignoring packet of incorrect protocol"));
             }
-        } else if (micros() - eventStart >= connWindowSize && !currentlyReceivingPacket()) {
+        } else if (micros() - eventStart >= rxWindow && !currentlyReceivingPacket()) {
             Serial.println(F("Missed packet"));
             setState(State::IDLE);
         }
         return;
     case State::CONN_TX_SLEEP:
-        if (micros() - eventStart >= connWindowInterval) {
-            setState(State::CONN_RX);
-            eventStart = micros();
-            err = radio.startReceive();
-            if (err == RADIOLIB_ERR_NONE) {
-                Serial.print(F("Waiting for next packet ... "));
-            } else {
-                sendError("Failed to start receiving", err);
-                setState(State::IDLE);
-            }
-        }
-        return;
-    case State::CONN_RX_SLEEP:
-        if (micros() - eventStart >= connWindowInterval + 5000) {
+        if (micros() - eventStart >= txDelay) {
             setState(State::CONN_TX);
             counter += 1;
             uint8_t payload[4];
@@ -370,8 +361,6 @@ void loop(void)
             payload[3] = counter & 0xff;
             loraconn::ConnectionData connData(4);
             connData.setConnectionIdentifier(connId);
-            connData.setSequenceNumber(lastSequenceNumber);
-            connData.setNextExpectedSequenceNumber(lastSequenceNumber);
             connData.setPayload(payload, 4);
             eventStart = micros();
             txError = startTransmitting(connData);

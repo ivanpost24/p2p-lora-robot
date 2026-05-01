@@ -2,8 +2,6 @@
 
 static constexpr uint8_t PACKET_TYPE_MASK = 0b00000111;
 static constexpr uint8_t CHANNEL_MASK = 0b11111000;
-static constexpr uint8_t SEQNO_MASK = 0b00001000;
-static constexpr uint8_t NSQN_MASK = 0b00010000;
 
 loraconn::PacketType loraconn::Packet::getPacketType() const
 {
@@ -28,6 +26,17 @@ bool loraconn::Advertisement::advertiserAddressMatches(const MACAddress &other) 
 void loraconn::Advertisement::setAdvertiserAddress(const MACAddress &advertiserAddress)
 {
     std::copy(advertiserAddress.cbegin(), advertiserAddress.cend(), data());
+}
+
+uint16_t loraconn::Advertisement::getCentralRxWindow() const
+{
+    return (static_cast<uint16_t>(*data(7)) << 8) | *data(6);
+}
+
+void loraconn::Advertisement::setCentralRxWindow(uint16_t window)
+{
+    *data(6) = window & 0xFF;
+    *data(7) = window >> 8;
 }
 
 void loraconn::ConnectionRequest::getAdvertiserAddress(MACAddress& out) const
@@ -55,12 +64,12 @@ void loraconn::ConnectionRequest::setConnectionIdentifier(const ConnectionIdenti
     std::copy(connectionIdentifier.cbegin(), connectionIdentifier.cend(), data(6));
 }
 
-uint16_t loraconn::ConnectionRequest::getWindowSize() const
+uint16_t loraconn::ConnectionRequest::getPeripheralRxWindow() const
 {
     return (static_cast<uint16_t>(*data(9)) << 8) | *data(8);
 }
 
-void loraconn::ConnectionRequest::setWindowSize(uint16_t windowSize)
+void loraconn::ConnectionRequest::setPeripheralRxWindow(uint16_t windowSize)
 {
     *data(8) = windowSize & 0xFF;
     *data(9) = windowSize >> 8;
@@ -77,17 +86,6 @@ void loraconn::ConnectionRequest::setWindowOffset(uint16_t windowOffset)
     *data(11) = windowOffset >> 8;
 }
 
-uint16_t loraconn::ConnectionRequest::getWindowInterval() const
-{
-    return (static_cast<uint16_t>(*data(13)) << 8) | *data(12);
-}
-
-void loraconn::ConnectionRequest::setWindowInterval(uint16_t windowInterval)
-{
-    *data(12) = windowInterval & 0xFF;
-    *data(13) = windowInterval >> 8;
-}
-
 uint8_t loraconn::ConnectionRequest::getChannel() const
 {
     return _raw[2] >> 3;
@@ -97,26 +95,6 @@ void loraconn::ConnectionRequest::setChannel(uint8_t firstChannel)
 {
     assert(firstChannel <= 30);
     _raw[2] = (_raw[2] & ~CHANNEL_MASK) | (firstChannel << 3);
-}
-
-bool loraconn::ConnectionData::getSequenceNumber() const
-{
-    return static_cast<bool>((_raw[2] >> 3) & 0b1);
-}
-
-void loraconn::ConnectionData::setSequenceNumber(bool sequenceNumber)
-{
-    _raw[2] = (_raw[2] & ~SEQNO_MASK) | (static_cast<uint8_t>(sequenceNumber) << 3);
-}
-
-bool loraconn::ConnectionData::getNextExpectedSequenceNumber() const
-{
-    return static_cast<bool>((_raw[2] >> 4) & 0b1);
-}
-
-void loraconn::ConnectionData::setNextExpectedSequenceNumber(bool sequenceNumber)
-{
-    _raw[2] = (_raw[2] & ~NSQN_MASK) | (static_cast<uint8_t>(sequenceNumber) << 4);
 }
 
 void loraconn::ConnectionData::getConnectionIdentifier(ConnectionIdentifier &out) const

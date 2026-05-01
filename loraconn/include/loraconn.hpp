@@ -198,7 +198,7 @@ struct Advertisement : public Packet
 {
 
     static constexpr PacketType type = PacketType::ADVERT;
-    static constexpr uint8_t dataLength = 6;
+    static constexpr uint8_t dataLength = 8;
 
     Advertisement() : Packet(headerLength + dataLength)
     {
@@ -236,6 +236,9 @@ struct Advertisement : public Packet
     void getAdvertiserAddress(MACAddress& out) const;
     bool advertiserAddressMatches(const MACAddress& other) const;
     void setAdvertiserAddress(const MACAddress& advertiserAddress);
+
+    uint16_t getCentralRxWindow() const;
+    void setCentralRxWindow(uint16_t window);
 
 };
 
@@ -285,14 +288,11 @@ struct ConnectionRequest: public Packet
     void getConnectionIdentifier(ConnectionIdentifier& out) const;
     void setConnectionIdentifier(const ConnectionIdentifier& connectionIdentifier);
 
-    uint16_t getWindowSize() const;
-    void setWindowSize(uint16_t windowSize);
+    uint16_t getPeripheralRxWindow() const;
+    void setPeripheralRxWindow(uint16_t window);
 
     uint16_t getWindowOffset() const;
     void setWindowOffset(uint16_t windowOffset);
-
-    uint16_t getWindowInterval() const;
-    void setWindowInterval(uint16_t windowInterval);
 
     uint8_t getChannel() const;
     void setChannel(uint8_t firstChannel);
@@ -331,12 +331,6 @@ struct ConnectionData : public Packet
 
     ConnectionData(ConnectionData&& other) : Packet(other)
     {}
-
-    bool getSequenceNumber() const;
-    void setSequenceNumber(bool sequenceNumber);
-
-    bool getNextExpectedSequenceNumber() const;
-    void setNextExpectedSequenceNumber(bool sequenceNumber);
 
     void getConnectionIdentifier(ConnectionIdentifier& out) const;
     bool connectionIdentifierMatches(const ConnectionIdentifier& connId) const;

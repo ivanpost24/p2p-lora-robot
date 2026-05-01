@@ -69,25 +69,26 @@ shall listen on channel 31 for at least the following durations:
 | 6   | 20 ms              |
 | 7   | 25 ms              |
 | 8   | 35 ms              |
-| 9   | 45 ms              |
-| 10  | 55 ms              |
+| 9   | 50 ms              |
+| 10  | 75 ms              |
 | 11  | 155 ms             |
-| 12  | 310 ms             |
+| 12  | 260 ms             |
 
-Advertisements simply contain a peripheral device address:
+Advertisements contain a peripheral device address and a requested RX window length for the central device, which
+should be chosen based on the spreading factor and other encoding parameters.
 
-| Length   | Name                      | Description                                                |
-| -------- | ------------------------- | ---------------------------------------------------------- |
-| 6 octets | Peripheral device address | An uniquely identifying address for the peripheral device. |
+| Length   | Name                      | Description                                                                                    |
+| -------- | ------------------------- | ---------------------------------------------------------------------------------------------- |
+| 6 octets | Peripheral device address | An uniquely identifying address for the peripheral device.                                     |
+| 2 octets | Central RX window         | Time the central should wait after TX to the peripheral device for a response (little endian). |
 
-*Data length:* 6 octets; *Total length*: 9 octets
+*Data length:* 8 octets; *Total length*: 11 octets
 
 ### 2.3. Connection request
 
 Once the central device receives an advertisement from the correct peripheral device, it shall send a connection
-request in response as soon as possible. The connection request will contain a specification for *connection events*,
-a concept borrowed from Bluetooth Low Energy. The window size, offset, and interval shall be chosen appropriately
-based on transmission duration with the chosen spreading factor.
+request in response as soon as possible. The connection request will contain a requested RX window length for the
+peripheral device, which should be chosen based on the spreading factor and other encoding parameters.
 
 #### 2.3.1. Connection request special section
 
@@ -97,34 +98,23 @@ based on transmission duration with the chosen spreading factor.
 
 #### 2.3.2. Connection request main section
 
-| Length   | Name                  | Description                                               |
-| -------- | --------------------- | --------------------------------------------------------- |
-| 6 octets | Advertiser address    | Address the advertiser used to identify itself.           |
-| 2 octets | Connection identifier | A randomly generated sequence to identify the connection. |
-| 2 octets | Window size           | Acceptable error window for each transmission (0.1 ms).   |
-| 2 octets | Window offset         | Time until the first connection event after TX (0.1 ms).  |
-| 2 octets | Window interval       | Time between connection events (0.1 ms).                  |
+| Length   | Name                  | Description                                                                                             |
+| -------- | --------------------- | ------------------------------------------------------------------------------------------------------- |
+| 6 octets | Advertiser address    | Address the advertiser used to identify itself.                                                         |
+| 2 octets | Connection identifier | A randomly generated sequence to identify the connection.                                               |
+| 2 octets | Peripheral RX window  | Time the peripheral should wait after TX to the central device for a response (little endian).          |
+| 2 octets | Window offset         | Time the peripheral should wait after receiving this request until the first RX window (little endian). |
 
-*Data length*: 13 octets; *Total length*: 16 octets
+*Data length*: 12 octets; *Total length*: 15 octets
 
 ### 2.4. Connection data
 
 Once a connection request is sent, the central device will send the first packet of the connection after the provided
-window offset time, measured from the end of the packet transmission. It shall use the sequence number of 0.
-
-#### 2.4.1. Connection data special section
-
-| Bit index (LSB–MSB) | Name                 | Description              |
-| ------------------- | -------------------- | ------------------------ |
-| 0                   | Sequence number      | Same as in BLE.          |
-| 1                   | Next sequence number | Same as in BLE.          |
-| 2–4                 | RFU                  | Reserved for future use. |
-
-#### 2.4.2. Main section
+window offset time, measured from the end of the packet transmission.
 
 | Length   | Name                  | Description                                                       |
 | -------- | --------------------- | ----------------------------------------------------------------- |
-| 2 octets | Connection identifier | The same stdconnection identifier sent in the connection request. |
+| 2 octets | Connection identifier | The same connection identifier sent in the connection request.    |
 | 1 octet  | Payload length        | Length of the payload (bytes)                                     |
 | varies   | Payload               |                                                                   |
 
