@@ -14,8 +14,8 @@
 void motors_init();
 
 // Signed speed: -255 (full reverse) … 0 (coast) … +255 (full forward)
-void motor_left(int speed);
-void motor_right(int speed);
+void motor_left(int8_t speed);
+void motor_right(int8_t speed);
 
 // Convenience wrappers
 void motors_stop();        // coast both sides

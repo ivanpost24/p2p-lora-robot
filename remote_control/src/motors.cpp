@@ -16,7 +16,7 @@
 //    H    H    Brake (both outputs pulled to GND) — avoid,
 //              causes shoot-through on the H-bridge
 // ------------------------------------------------------------
-static void _set_channel(int speed, uint8_t ledc_ch,
+static void _set_channel(int8_t speed, uint8_t ledc_ch,
                           uint8_t pin_fwd, uint8_t pin_rev) {
     if (speed == 0) {
         digitalWrite(pin_fwd, LOW);
@@ -34,7 +34,6 @@ static void _set_channel(int speed, uint8_t ledc_ch,
         speed = -speed;
     }
 
-    speed = constrain(speed, 0, 255);
     ledcWrite(ledc_ch, (uint8_t)speed);
 }
 
@@ -56,11 +55,11 @@ void motors_init() {
     motors_stop();
 }
 
-void motor_left(int speed) {
+void motor_left(int8_t speed) {
     _set_channel(speed, LEDC_CH_LEFT, PIN_LIN1, PIN_LIN2);
 }
 
-void motor_right(int speed) {
+void motor_right(int8_t speed) {
     _set_channel(speed, LEDC_CH_RIGHT, PIN_RIN1, PIN_RIN2);
 }
 

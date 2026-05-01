@@ -11,7 +11,7 @@
 // (0–4095) without any voltage divider needed.
 // ============================================================
 
-static int _read_axis(uint8_t pin) {
+static int8_t _read_axis(uint8_t pin) {
     int raw      = analogRead(pin);       // 0–4095
     int centered = raw - ADC_CENTER;      // ~-2048 … +2047
 
@@ -22,7 +22,7 @@ static int _read_axis(uint8_t pin) {
     // Divide by 4 → ±512 max.
     // After tank mixing (L = Y+X, R = Y-X) worst case is 1024,
     // which constrain() clips to ±255 before it hits the motors.
-    return centered / 4;
+    return centered / 17;
 }
 
 void joystick_init() {
