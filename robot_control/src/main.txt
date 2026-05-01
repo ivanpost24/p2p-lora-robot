@@ -1,0 +1,17 @@
+#include <Arduino.h>
+#include "config.h"
+#include "display.h"
+#include "joystick.h"
+
+void setup() {
+    Serial.begin(115200);
+    delay(500);
+    display_init();
+    joystick_init();
+    Serial.println("Joystick test ready. Move the stick and watch.");
+}
+
+void loop() {
+    joystick_debug_print();
+    delay(100);
+}
