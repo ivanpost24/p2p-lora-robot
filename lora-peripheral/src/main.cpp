@@ -10,6 +10,12 @@ on both transmitter and receiver:
 #include <RadioLib.h>
 #include "loraconn.hpp"
 
+/// @brief Perform additional setup after the radio has been configured.
+///
+/// This function is called at the end of the Arduino `setup()` function after
+/// the radio has been configured.
+extern void performSetup();
+
 /// @brief Prepare to accept a connection from the central device.
 ///
 /// This function is called right after receiving a connection request.
@@ -200,6 +206,8 @@ void setup()
         terminateWithError("Current limit intialization failed", err);
     }
     radio.setDio1Action(onOperationCompleted);
+
+    performSetup();
 }
 
 void advertise()

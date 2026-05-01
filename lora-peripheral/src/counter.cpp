@@ -3,6 +3,11 @@
 
 static int counter = 0;
 
+void performSetup()
+{
+
+}
+
 int onConnectionRequested()
 {
     counter = 0;
