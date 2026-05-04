@@ -61,16 +61,16 @@ static constexpr int LORA_BUSY  = 13;
 static constexpr int BUTTON     = 0;
 
 /**************** LoRa parameters ******************/
-static constexpr uint8_t SF = 7;
+static constexpr uint8_t SF = 9;
 static constexpr int8_t TX_PWR = 20;
 static constexpr uint8_t CR = 5;
 static constexpr uint8_t SYNC_WORD = (uint8_t)0x34;
 static constexpr uint16_t PREAMBLE = 8;
 
 static constexpr loraconn::MACAddress macAddress = {0x58, 0x02, 0x34, 0x00, 0xfe, 0x54};
-static constexpr unsigned long advRxWindow = 35000;
+static constexpr unsigned long advRxWindow = 60000;
 static constexpr unsigned long advEventLength = 1000000;
-static constexpr unsigned long centralRxWindow = 25000;
+static constexpr unsigned long centralRxWindow = 45000;
 static constexpr unsigned long txDelay = 500;
 
 enum class State
