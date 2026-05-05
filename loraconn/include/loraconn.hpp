@@ -9,14 +9,19 @@
 
 namespace loraconn {
 
-static constexpr uint8_t ADVERTISING_CHANNEL = 31;
+static constexpr uint8_t ADVERTISING_CHANNEL = 113;
 
 constexpr float getChannelFrequency(uint8_t channel) {
-    return 908.4f + 0.6f * channel;
+    return 903.0f + 0.2f * channel;
 }
 
 constexpr float getChannelBandwidth(uint8_t channel) {
-    return 500.0f;
+    return 125.0f;
+}
+
+uint8_t getNextChannel(uint8_t channel, uint8_t hopCount) {
+    assert(hopCount >= 1 && hopCount <= 112);
+    return (channel + hopCount) % 113;
 }
 
 /**
@@ -38,22 +43,22 @@ enum class PacketType : uint8_t
     /**
      * \brief Advertisement packet type.
      */
-    ADVERT = 0b000,
+    ADVERT = 0b00,
 
     /**
      * \brief Connection Request packet type.
      */
-    CONN_REQ = 0b011,
+    CONN_REQ = 0b01,
 
     /**
      * \brief Connection Data packet type.
      */
-    CONN_DATA = 0b100,
+    CONN_DATA = 0b10,
 
     /**
      * \brief Disconnection Request packet type.
      */
-    DISCONN_REQ = 0b111,
+    DISCONN_REQ = 0b11,
 
 };
 
@@ -198,7 +203,7 @@ struct Advertisement : public Packet
 {
 
     static constexpr PacketType type = PacketType::ADVERT;
-    static constexpr uint8_t dataLength = 8;
+    static constexpr uint8_t dataLength = 11;
 
     Advertisement() : Packet(headerLength + dataLength)
     {
@@ -240,13 +245,19 @@ struct Advertisement : public Packet
     uint16_t getCentralRxWindow() const;
     void setCentralRxWindow(uint16_t window);
 
+    uint8_t getPayloadLength() const;
+    void setPayloadLength(uint8_t length);
+
+    uint16_t getTimeOnAir() const;
+    void setTimeOnAir(uint16_t timeOnAir);
+
 };
 
 struct ConnectionRequest: public Packet
 {
 
     static constexpr PacketType type = PacketType::CONN_REQ;
-    static constexpr uint8_t dataLength = 14;
+    static constexpr uint8_t dataLength = 15;
 
     ConnectionRequest() : Packet(headerLength + dataLength)
     {
@@ -291,11 +302,20 @@ struct ConnectionRequest: public Packet
     uint16_t getPeripheralRxWindow() const;
     void setPeripheralRxWindow(uint16_t window);
 
-    uint16_t getWindowOffset() const;
-    void setWindowOffset(uint16_t windowOffset);
+    uint16_t getFirstEventOffset() const;
+    void setFirstEventOffset(uint16_t offset);
 
-    uint8_t getChannel() const;
-    void setChannel(uint8_t firstChannel);
+    uint8_t getFirstChannel() const;
+    void setFirstChannel(uint8_t firstChannel);
+
+    uint8_t getHopCount() const;
+    void setHopCount(uint8_t hopCount);
+
+    uint8_t getPayloadLength() const;
+    void setPayloadLength(uint8_t length);
+
+    uint8_t getEventMessagePairs() const;
+    void setEventMessagePairs(uint8_t pairs);
 
 };
 
@@ -303,7 +323,7 @@ struct ConnectionData : public Packet
 {
 
     static constexpr PacketType type = PacketType::CONN_DATA;
-    static constexpr uint8_t dataHeaderLength = 3;
+    static constexpr uint8_t dataHeaderLength = 2;
 
     ConnectionData(uint8_t payloadCapacity)
     : Packet(headerLength + dataHeaderLength + payloadCapacity), payloadCapacity{payloadCapacity}

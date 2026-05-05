@@ -1,7 +1,7 @@
 #include "loraconn.hpp"
 
-static constexpr uint8_t PACKET_TYPE_MASK = 0b00000111;
-static constexpr uint8_t CHANNEL_MASK = 0b11111000;
+static constexpr uint8_t PACKET_TYPE_MASK = 0b00000011;
+static constexpr uint8_t PAIRS_MASK = 0b11111100;
 
 loraconn::PacketType loraconn::Packet::getPacketType() const
 {
@@ -37,6 +37,27 @@ void loraconn::Advertisement::setCentralRxWindow(uint16_t window)
 {
     *data(6) = window & 0xFF;
     *data(7) = window >> 8;
+}
+
+uint8_t loraconn::Advertisement::getPayloadLength() const
+{
+    return *data(8);
+}
+
+void loraconn::Advertisement::setPayloadLength(uint8_t length)
+{
+    *data(8) = length;
+}
+
+uint16_t loraconn::Advertisement::getTimeOnAir() const
+{
+    return (static_cast<uint16_t>(*data(10)) << 8) | *data(9);
+}
+
+void loraconn::Advertisement::setTimeOnAir(uint16_t timeOnAir)
+{
+    *data(9) = timeOnAir & 0xFF;
+    *data(10) = timeOnAir >> 8;
 }
 
 void loraconn::ConnectionRequest::getAdvertiserAddress(MACAddress& out) const
@@ -75,26 +96,58 @@ void loraconn::ConnectionRequest::setPeripheralRxWindow(uint16_t windowSize)
     *data(9) = windowSize >> 8;
 }
 
-uint16_t loraconn::ConnectionRequest::getWindowOffset() const
+uint16_t loraconn::ConnectionRequest::getFirstEventOffset() const
 {
     return (static_cast<uint16_t>(*data(11)) << 8) | *data(10);
 }
 
-void loraconn::ConnectionRequest::setWindowOffset(uint16_t windowOffset)
+void loraconn::ConnectionRequest::setFirstEventOffset(uint16_t windowOffset)
 {
     *data(10) = windowOffset & 0xFF;
     *data(11) = windowOffset >> 8;
 }
 
-uint8_t loraconn::ConnectionRequest::getChannel() const
+uint8_t loraconn::ConnectionRequest::getFirstChannel() const
 {
-    return _raw[2] >> 3;
+    return *data(12);
 }
 
-void loraconn::ConnectionRequest::setChannel(uint8_t firstChannel)
+void loraconn::ConnectionRequest::setFirstChannel(uint8_t firstChannel)
 {
-    assert(firstChannel <= 30);
-    _raw[2] = (_raw[2] & ~CHANNEL_MASK) | (firstChannel << 3);
+    assert(firstChannel <= 112);
+    *data(12) = firstChannel;
+}
+
+uint8_t loraconn::ConnectionRequest::getHopCount() const
+{
+    return *data(13);
+}
+
+void loraconn::ConnectionRequest::setHopCount(uint8_t hopCount)
+{
+    assert(hopCount >= 1 && hopCount <= 112);
+    *data(13) = hopCount;
+}
+
+uint8_t loraconn::ConnectionRequest::getPayloadLength() const
+{
+    return *data(14);
+}
+
+void loraconn::ConnectionRequest::setPayloadLength(uint8_t length)
+{
+    *data(14) = length;
+}
+
+uint8_t loraconn::ConnectionRequest::getEventMessagePairs() const
+{
+    return _raw[2] >> 2;
+}
+
+void loraconn::ConnectionRequest::setEventMessagePairs(uint8_t pairs)
+{
+    assert(pairs < 64);
+    _raw[2] = (_raw[2] & ~PAIRS_MASK) | (pairs << 2);
 }
 
 void loraconn::ConnectionData::getConnectionIdentifier(ConnectionIdentifier &out) const
@@ -114,12 +167,11 @@ void loraconn::ConnectionData::setConnectionIdentifier(const ConnectionIdentifie
 
 uint8_t loraconn::ConnectionData::getPayloadLength() const
 {
-    return *data(2);
+    return getDataLength() - dataHeaderLength;
 }
 
 void loraconn::ConnectionData::setPayloadLength(uint8_t payloadLength)
 {
-    *data(2) = payloadLength;
     setDataLength(dataHeaderLength + payloadLength);
 }
 

@@ -10,14 +10,13 @@ protocol using this physical layer protocol.
 
 ### 1.1. Channels
 
-The protocol uses 32 channels in the 902-928 MHz ISM band numbered 0 to 31. Each channel has a bandwidth of 500 kHz,
-and the spacing between each channel is 600 kHz. The frequency of channel $k$ can be calculated, in MHz, as follows:
+The protocol uses 114 channels in the 902-928 MHz ISM band numbered 0 to 113. Each channel has a bandwidth of 125 kHz,
+and the spacing between each channel is 200 kHz. The frequency of channel $k$ can be calculated, in MHz, as follows:
 
-    freq(k) = 908.4 + 0.6 * k
+    freq(k) = 903.0 + 0.2 * k
 
-Channel 31 is reserved for advertising, and the remaining 30 channels are used for connections. Because the device is
-transmitting at a bandwidth of 500 kHz, it is not necessary to hop channels, though this may be a nice feature to add
-if the device is experiencing interference.
+Channel 113 is reserved for advertising, and the remaining 113 channels are used for connections over frequency hopping
+spread spectrum (FHSS).
 
 ### 1.2. Data rate parameters
 
@@ -37,8 +36,8 @@ filter irrelevant packets sent by devices using other protocols.
 | Length   | Name                | Description                                          |
 | -------- | ------------------- | ---------------------------------------------------- |
 | 2 octets | Protocol identifier | 0x1195, which identifies the protocol.               |
-| 5 bits   | Special             | Special control flags, depending on the packet type. |
-| 3 bits   | Packet type         | The type of the packet (see 2.1.1).                  |
+| 6 bits   | Special             | Special control flags, depending on the packet type. |
+| 2 bits   | Packet type         | The type of the packet (see 2.1.1).                  |
 | varies   | Rest of frame       |                                                      |
 
 *Header length*: 3 octets
@@ -47,21 +46,19 @@ filter irrelevant packets sent by devices using other protocols.
 
 The packet type field above may be one of the following. Each packet type is explained in further detail below.
 
-| ID      | Type                    |
-| ------- | ----------------------- |
-| 000     | Advertisement           |
-| 001–010 | Reserved for future use |
-| 011     | Connection request      |
-| 100     | Connection data         |
-| 101–110 | Reserved for future use |
-| 111     | Disconnection request   |
+| ID  | Type                   |
+| --- | ---------------------- |
+| 00  | Advertisement          |
+| 01  | Connection request     |
+| 10  | Connection data        |
+| 11  | Disconnection request  |
 
 ### 2.2. Advertising
 
-The peripheral device shall periodically send out advertisements on channel 31. Central devices shall continuously
-listen on channel 31 for advertisements. The central device is assumed to already know the device address of the
+The peripheral device shall periodically send out advertisements on channel 119. Central devices shall continuously
+listen on channel 119 for advertisements. The central device is assumed to already know the device address of the
 peripheral device to which it wishes to connect (this information is provided out-of-band). The peripheral device
-shall listen on channel 31 for at least the following durations:
+shall listen on channel 119 for at least the following durations:
 
 | SF  | RX window duration |
 | --- | ------------------ |
@@ -77,12 +74,14 @@ shall listen on channel 31 for at least the following durations:
 Advertisements contain a peripheral device address and a requested RX window length for the central device, which
 should be chosen based on the spreading factor and other encoding parameters.
 
-| Length   | Name                      | Description                                                                                    |
-| -------- | ------------------------- | ---------------------------------------------------------------------------------------------- |
-| 6 octets | Peripheral device address | An uniquely identifying address for the peripheral device.                                     |
-| 2 octets | Central RX window         | Time the central should wait after TX to the peripheral device for a response (little endian). |
+| Length   | Name               | Description                                                                                    |
+| -------- | ------------------ | ---------------------------------------------------------------------------------------------- |
+| 6 octets | Advertiser address | An uniquely identifying address for the peripheral device.                                     |
+| 2 octets | Central RX window  | Time the central should wait after TX to the peripheral device for a response (little endian). |
+| 1 octet  | Payload length     | Length of connection data payloads.                                                            |
+| 2 octets | Time on air        | Estimated time on air for connection data payload transmissions (0.1 ms, little endian).       |
 
-*Data length:* 8 octets; *Total length*: 11 octets
+*Data length:* 11 octets; *Total length*: 14 octets
 
 ### 2.3. Connection request
 
@@ -92,9 +91,9 @@ peripheral device, which should be chosen based on the spreading factor and othe
 
 #### 2.3.1. Connection request special section
 
-| Bit index (LSB–MSB) | Name    | Description                                                   |
-| ------------------- | ------- | ------------------------------------------------------------- |
-| 0–4                 | Channel | The channel to use for communication, in the range \[0, 30\]. |
+| Bit index (LSB–MSB) | Name                | Description                                   |
+| ------------------- | ------------------- | --------------------------------------------  |
+| 0–5                 | Event message pairs | Number of message pairs per connection event. |
 
 #### 2.3.2. Connection request main section
 
@@ -103,9 +102,12 @@ peripheral device, which should be chosen based on the spreading factor and othe
 | 6 octets | Advertiser address    | Address the advertiser used to identify itself.                                                         |
 | 2 octets | Connection identifier | A randomly generated sequence to identify the connection.                                               |
 | 2 octets | Peripheral RX window  | Time the peripheral should wait after TX to the central device for a response (little endian).          |
-| 2 octets | Window offset         | Time the peripheral should wait after receiving this request until the first RX window (little endian). |
+| 2 octets | First event offset    | Time the peripheral should wait after receiving this request until the first RX window (little endian). |
+| 1 octet  | First channel         | Channel on which the first connection will occur (in range \[0, 112\]).                                 |
+| 1 octet  | Hop count             | Amount to hop by between each channel. Each next channels is calculated as `c_next = (c + hop) % 113`.  |
+| 1 octet  | Payload length        | Length of connection data payloads.                                                                     |
 
-*Data length*: 12 octets; *Total length*: 15 octets
+*Data length*: 15 octets; *Total length*: 18 octets
 
 ### 2.4. Connection data
 
@@ -115,10 +117,9 @@ window offset time, measured from the end of the packet transmission.
 | Length   | Name                  | Description                                                       |
 | -------- | --------------------- | ----------------------------------------------------------------- |
 | 2 octets | Connection identifier | The same connection identifier sent in the connection request.    |
-| 1 octet  | Payload length        | Length of the payload (bytes)                                     |
 | varies   | Payload               |                                                                   |
 
-*Header length:* 3 octets; *Total length*: 6 + (Payload length) octets
+*Header length:* 2 octets; *Total length*: 5 + (Payload length) octets
 
 ### 2.5. Disconnection request
 
