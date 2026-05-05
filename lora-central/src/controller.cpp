@@ -1,23 +1,28 @@
 #include <Arduino.h>
 #include <stdint.h>
 
-#include "joystick.h"
-#include "display.h"
+#include "base/joystick.h"
+#include "base/display.h"
+#include "base/controller.hpp"
 
-static constexpr float fullForwardMagnitude = 0.6f;
+constexpr uint8_t controller::centralPayloadLength = 2;
 
-void performSetup()
+namespace {
+    constexpr float fullForwardMagnitude = 0.6f;
+}
+
+void controller::setup()
 {
     joystick_init();
     display_init();
 }
 
-int onPeripheralDetected()
+int controller::onPeripheralDetected()
 {
     return 0;
 }
 
-int prepareTxPacket(uint8_t *data, uint8_t capacity, uint8_t &len)
+int controller::prepareTxPacket(uint8_t *data)
 {
     JoyState joysticks = joystick_read();
     float linear = fullForwardMagnitude * joysticks.y;
@@ -26,11 +31,10 @@ int prepareTxPacket(uint8_t *data, uint8_t capacity, uint8_t &len)
     int8_t right = static_cast<int8_t>(linear + angular);
     data[0] = *reinterpret_cast<uint8_t*>(&left);
     data[1] = *reinterpret_cast<uint8_t*>(&right);
-    len = 2;
     return 0;
 }
 
-int onReceive(const uint8_t *data, uint8_t len)
+int controller::onReceive(const uint8_t *data, uint8_t len)
 {
     return 0;
 }

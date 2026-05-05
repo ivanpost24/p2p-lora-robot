@@ -19,7 +19,7 @@ constexpr float getChannelBandwidth(uint8_t channel) {
     return 125.0f;
 }
 
-uint8_t getNextChannel(uint8_t channel, uint8_t hopCount) {
+inline uint8_t getNextChannel(uint8_t channel, uint8_t hopCount) {
     assert(hopCount >= 1 && hopCount <= 112);
     return (channel + hopCount) % 113;
 }
