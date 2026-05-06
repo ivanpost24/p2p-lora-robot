@@ -51,7 +51,7 @@
 // ------------------------------------------------------------
 #define PIN_VRX    7    // ADC1_CH6 — safe analog input
 #define PIN_VRY    6    // ADC1_CH5 — safe analog input
-#define PIN_SW     5   // 
+#define PIN_SW     5   //
 
 // ------------------------------------------------------------
 // HC-SR04 Ultrasonic — stubbed, implement later
