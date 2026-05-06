@@ -20,7 +20,7 @@ static constexpr int8_t TOO_MANY_MISSED_MESSAGES = 1;
 static constexpr loraconn::MACAddress macAddress = {0x58, 0x02, 0x34, 0x00, 0xfe, 0x54};
 static constexpr unsigned long advRxWindow = 500000;
 static constexpr unsigned long advEventLength = 3000000;
-static constexpr unsigned long centralRxWindow = 150000;
+static constexpr unsigned long centralRxWindow = 200000;
 static constexpr unsigned long txDelay = 1000;
 
 enum class State

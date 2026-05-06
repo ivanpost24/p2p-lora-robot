@@ -17,8 +17,8 @@ static constexpr uint8_t spreadingFactor = 8;
 static constexpr int8_t TOO_MANY_MISSED_MESSAGES = 1;
 
 static constexpr loraconn::MACAddress peripheralAddress = {0x58, 0x02, 0x34, 0x00, 0xfe, 0x54};
-static constexpr unsigned long connFirstEventOffset = 150000;
-static constexpr unsigned long peripheralRxWindow = 150000;
+static constexpr unsigned long connFirstEventOffset = 200000;
+static constexpr unsigned long peripheralRxWindow = 200000;
 static constexpr unsigned long txDelay = 1000;
 
 enum class State
@@ -70,11 +70,11 @@ static void configureConnection(const loraconn::Advertisement& advertisement) {
     connId.at(0) = (randomId >> 8) & 0xff;
     connId.at(1) = randomId & 0xff;
     do {
-        firstChannel = random() & 0b11111;
-    } while (firstChannel == 31);
+        firstChannel = random() & 0b111111;
+    } while (firstChannel >= loraconn::ADVERTISING_CHANNEL);
     do {
-        hopCount = random() & 0b1111111;
-    } while (hopCount < 1 || hopCount > 112);
+        hopCount = random() & 0b111111;
+    } while (hopCount < 1 || hopCount > 58);
     messagePairsPerEvent = getEventMessagePairs(
         static_cast<unsigned long>(advertisement.getTimeOnAir()) * 100,
         controller::centralPayloadLength

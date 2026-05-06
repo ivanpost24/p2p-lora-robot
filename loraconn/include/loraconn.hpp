@@ -9,19 +9,19 @@
 
 namespace loraconn {
 
-static constexpr uint8_t ADVERTISING_CHANNEL = 113;
+static constexpr uint8_t ADVERTISING_CHANNEL = 59;
 
 constexpr float getChannelFrequency(uint8_t channel) {
-    return 903.0f + 0.2f * channel;
+    return 903.0f + 0.4f * channel;
 }
 
 constexpr float getChannelBandwidth(uint8_t channel) {
-    return 125.0f;
+    return 250.0f;
 }
 
 inline uint8_t getNextChannel(uint8_t channel, uint8_t hopCount) {
-    assert(hopCount >= 1 && hopCount <= 112);
-    return (channel + hopCount) % 113;
+    assert(hopCount >= 1 && hopCount <= 58);
+    return (channel + hopCount) % 59;
 }
 
 /**
