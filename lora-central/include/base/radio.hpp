@@ -1,5 +1,4 @@
-#ifndef WIOT_RADIO_HPP
-#define WIOT_RADIO_HPP
+#pragma once
 
 #include <functional>
 #include <RadioLib.h>
@@ -31,11 +30,18 @@ bool readPacket(loraconn::Packet& out);
 
 bool readPacket(std::function<void(const loraconn::Packet&)> responder);
 
-bool readAdvertisement(std::function<void(const loraconn::Advertisement&)> responder);
+bool readAdvertisement(
+    const loraconn::MACAddress& advertiserAddress,
+    std::function<void(const loraconn::Advertisement&)> responder
+);
 
-bool readConnectionRequest(std::function<void(const loraconn::ConnectionRequest&)> responder);
+bool readConnectionRequest(
+    const loraconn::MACAddress& advertiserAddress,
+    std::function<void(const loraconn::ConnectionRequest&)> responder
+);
 
 bool readConnectionData(
+    const loraconn::ConnectionIdentifier& connId,
     std::function<void(const loraconn::ConnectionData&)> responder,
     std::function<void(const loraconn::DisconnectionRequest&)> disconnRequestResponder = nullptr
 );
@@ -45,5 +51,3 @@ bool currentlyReceivingPacket();
 bool pollCompletedOperation();
 
 }
-
-#endif

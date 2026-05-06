@@ -1,25 +1,28 @@
+#include "controller.hpp"
+
 #include <Arduino.h>
 #include <stdint.h>
 
 #include "motors.h"
 
-void performSetup()
+constexpr uint8_t controller::peripheralPayloadLength = 0;
+
+void controller::setup()
 {
     motors_init();
 }
 
-int onConnectionRequested()
+int controller::onConnectionRequested()
 {
     return 0;
 }
 
-int prepareTxPacket(uint8_t *data, uint8_t capacity, uint8_t &len)
+int controller::prepareTxPacket(uint8_t *data)
 {
-    len = 0;
     return 0;
 }
 
-int onReceive(const uint8_t *data, uint8_t len)
+int controller::onReceive(const uint8_t *data, uint8_t len)
 {
     int8_t left = reinterpret_cast<const int8_t*>(data)[0];
     int8_t right = reinterpret_cast<const int8_t*>(data)[1];

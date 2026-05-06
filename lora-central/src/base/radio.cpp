@@ -66,6 +66,11 @@ int16_t radio::setup(uint8_t spreadingFactor, int8_t txPower, uint8_t codingRate
     }
     _radio.setDio1Action(onOperationCompleted);
 
+    err = radio::setChannel(_channel);
+    if (err != RADIOLIB_ERR_NONE) {
+        printing::error("Setting channel failed", err);
+    }
+
     return RADIOLIB_ERR_NONE;
 }
 
@@ -153,13 +158,21 @@ bool radio::readPacket(std::function<void(const loraconn::Packet&)> responder)
     }
 }
 
-bool radio::readAdvertisement(std::function<void(const loraconn::Advertisement&)> responder)
+bool radio::readAdvertisement(
+    const loraconn::MACAddress& advertiserAddress,
+    std::function<void(const loraconn::Advertisement&)> responder
+)
 {
     if (readPacket(packet)) {
         if (packet.getPacketType() == loraconn::PacketType::ADVERT) {
             loraconn::Advertisement advert(packet);
-            responder(advert);
-            return true;
+            if (advert.advertiserAddressMatches(advertiserAddress)) {
+                responder(advert);
+                return true;
+            } else {
+                printing::error("Ignoring advertisement from incorrect device", 1);
+                return false;
+            }
         } else {
             printing::error("Ignoring packet which is not an advertisement", 1);
             return false;
@@ -170,13 +183,21 @@ bool radio::readAdvertisement(std::function<void(const loraconn::Advertisement&)
     }
 }
 
-bool radio::readConnectionRequest(std::function<void(const loraconn::ConnectionRequest&)> responder)
+bool radio::readConnectionRequest(
+    const loraconn::MACAddress& advertiserAddress,
+    std::function<void(const loraconn::ConnectionRequest&)> responder
+)
 {
     if (readPacket(packet)) {
         if (packet.getPacketType() == loraconn::PacketType::CONN_REQ) {
             loraconn::ConnectionRequest connRequest(packet);
-            responder(connRequest);
-            return true;
+            if (connRequest.advertiserAddressMatches(advertiserAddress)) {
+                responder(connRequest);
+                return true;
+            } else {
+                printing::error("Ignoring connection request for a different device", 1);
+                return false;
+            }
         } else {
             printing::error("Ignoring packet which is not a connection request", 1);
             return false;
@@ -188,6 +209,7 @@ bool radio::readConnectionRequest(std::function<void(const loraconn::ConnectionR
 }
 
 bool radio::readConnectionData(
+    const loraconn::ConnectionIdentifier& connId,
     std::function<void(const loraconn::ConnectionData &)> responder,
     std::function<void(const loraconn::DisconnectionRequest &)> disconnRequestResponder
 )
@@ -195,12 +217,22 @@ bool radio::readConnectionData(
     if (readPacket(packet)) {
         if (packet.getPacketType() == loraconn::PacketType::CONN_DATA) {
             loraconn::ConnectionData connData(packet);
-            responder(connData);
-            return true;
+            if (connData.connectionIdentifierMatches(connId)) {
+                responder(connData);
+                return true;
+            } else {
+                printing::error("Ignoring connection data for a different device", 1);
+                return false;
+            }
         } else if (packet.getPacketType() == loraconn::PacketType::DISCONN_REQ && disconnRequestResponder != nullptr) {
             loraconn::DisconnectionRequest disconnRequest(packet);
-            disconnRequestResponder(disconnRequest);
-            return true;
+            if (disconnRequest.connectionIdentifierMatches(connId)) {
+                disconnRequestResponder(disconnRequest);
+                return true;
+            } else {
+                printing::error("Ignoring disconnection request for a different device", 1);
+                return false;
+            }
         } else {
             printing::error("Ignoring packet which is not a connection request", 1);
             return false;

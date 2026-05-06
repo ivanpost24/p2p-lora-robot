@@ -1,6 +1,6 @@
 #include "joystick.h"
 #include "display.h"
-#include "config.h"
+#include "base/config.h"
 
 // ============================================================
 // joystick.cpp — KY-023 reading with deadzone + axis scaling

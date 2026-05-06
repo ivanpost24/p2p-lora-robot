@@ -1,5 +1,5 @@
 #include "motors.h"
-#include "config.h"
+#include "base/config.h"
 
 // ============================================================
 // motors.cpp — TB6612FNG + LEDC implementation

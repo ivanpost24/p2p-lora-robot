@@ -1,9 +1,10 @@
+#include "controller.hpp"
+
 #include <Arduino.h>
 #include <stdint.h>
 
-#include "base/joystick.h"
-#include "base/display.h"
-#include "base/controller.hpp"
+#include "joystick.h"
+#include "display.h"
 
 constexpr uint8_t controller::centralPayloadLength = 2;
 
@@ -36,5 +37,6 @@ int controller::prepareTxPacket(uint8_t *data)
 
 int controller::onReceive(const uint8_t *data, uint8_t len)
 {
+    Serial.println(F("Received reply"));
     return 0;
 }

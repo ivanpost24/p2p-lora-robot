@@ -7,20 +7,19 @@ on both transmitter and receiver:
 */
 
 #include <RadioLib.h>
-#include <functional>
 #include "controller.hpp"
 #include "loraconn.hpp"
-#include "printing.hpp"
-#include "radio.hpp"
-#include "timemark.hpp"
+#include "base/printing.hpp"
+#include "base/radio.hpp"
+#include "base/timemark.hpp"
 
-static constexpr uint8_t spreadingFactor = 9;
+static constexpr uint8_t spreadingFactor = 8;
 static constexpr int8_t TOO_MANY_MISSED_MESSAGES = 1;
 
 static constexpr loraconn::MACAddress peripheralAddress = {0x58, 0x02, 0x34, 0x00, 0xfe, 0x54};
-static constexpr unsigned long connWindowOffset = 100000;
-static constexpr unsigned long peripheralRxWindow = 45000;
-static constexpr unsigned long txDelay = 500;
+static constexpr unsigned long connFirstEventOffset = 150000;
+static constexpr unsigned long peripheralRxWindow = 150000;
+static constexpr unsigned long txDelay = 1000;
 
 enum class State
 {
@@ -46,18 +45,11 @@ static volatile State state(State::IDLE);
 static loraconn::Packet packet(255);
 static loraconn::ConnectionData txData(controller::centralPayloadLength);
 
-static RadioLibTime_t getApproximateTimeOnAir(uint8_t payloadLength)
+static uint8_t getEventMessagePairs(unsigned long peripheralTimeOnAir, uint8_t centralPayloadLength)
 {
-    return radio::getApproximateTimeOnAir(
-        loraconn::ConnectionData::headerLength + loraconn::ConnectionData::dataHeaderLength + payloadLength
-    );
-}
-
-static uint8_t getEventMessagePairs(uint8_t peripheralPayloadLength, uint8_t centralPayloadLength)
-{
-    return static_cast<uint8_t>(
-        300000.0f / (getApproximateTimeOnAir(peripheralPayloadLength) + getApproximateTimeOnAir(centralPayloadLength))
-    );
+    RadioLibTime_t timeOnAir = peripheralTimeOnAir + radio::getApproximateTimeOnAir(centralPayloadLength);
+    Serial.printf("Estimated time on air: %d\n", timeOnAir);
+    return static_cast<uint8_t>(320000.0f / timeOnAir);
 }
 
 static int16_t startScanning()
@@ -65,7 +57,8 @@ static int16_t startScanning()
     int16_t err;
     err = radio::setChannel(loraconn::ADVERTISING_CHANNEL);
     if (err != RADIOLIB_ERR_NONE) {
-        printing::error(F("Failed to switch to advertisement channel"), err);
+        printing::error(F("Failed to switch to advertising channel"), err);
+        return err;
     }
 
     return radio::startReceiving();
@@ -83,9 +76,14 @@ static void configureConnection(const loraconn::Advertisement& advertisement) {
         hopCount = random() & 0b1111111;
     } while (hopCount < 1 || hopCount > 112);
     messagePairsPerEvent = getEventMessagePairs(
-        advertisement.getPayloadLength(),
+        static_cast<unsigned long>(advertisement.getTimeOnAir()) * 100,
         controller::centralPayloadLength
     );
+    if (messagePairsPerEvent == 0) {
+        Serial.println(F("Messages take too long to send. Aborting."));
+        while (true);
+    }
+    Serial.printf("Messages per event: %d\n", 2 * static_cast<uint16_t>(messagePairsPerEvent));
 }
 
 static int16_t startConnectionRequest(const loraconn::Advertisement& advertisement)
@@ -94,7 +92,7 @@ static int16_t startConnectionRequest(const loraconn::Advertisement& advertiseme
     connRequest.setAdvertiserAddress(peripheralAddress);
     connRequest.setConnectionIdentifier(connId);
     connRequest.setPeripheralRxWindow(static_cast<uint16_t>(peripheralRxWindow / 100));
-    connRequest.setFirstEventOffset(static_cast<uint16_t>(connWindowOffset / 100));
+    connRequest.setFirstEventOffset(static_cast<uint16_t>(connFirstEventOffset / 100));
     connRequest.setFirstChannel(firstChannel);
     connRequest.setHopCount(hopCount);
     connRequest.setPayloadLength(controller::centralPayloadLength);
@@ -115,7 +113,7 @@ static int16_t prepareForNextMessage()
     if (missedMessages >= messagePairsPerEvent) {
         return TOO_MANY_MISSED_MESSAGES;
     }
-    if (++messagesInEvent >= 2 * messagePairsPerEvent) {
+    if (++messagesInEvent >= 2 * static_cast<uint16_t>(messagePairsPerEvent)) {
         missedMessages = 0;
         messagesInEvent = 0;
         return radio::setChannel(loraconn::getNextChannel(radio::getChannel(), hopCount));
@@ -174,93 +172,127 @@ void loop(void)
         return;
     case State::SCAN_RX:
         if (radio::pollCompletedOperation()) {
-            radio::readAdvertisement([&](const loraconn::Advertisement& advertisement) -> void {
-                Serial.println(F("Found peripheral device!"));
-                err = radio::finishReceiving();
-                if (err != RADIOLIB_ERR_NONE) {
-                    printing::error(F("Failed to finish receiving"), err);
-                }
-                int ignore = controller::onPeripheralDetected();
-                if (!ignore) {
-                    configureConnection(advertisement);
-                    err = startConnectionRequest(advertisement);
-                    if (err == RADIOLIB_ERR_NONE) {
-                        Serial.print(F("Starting connection request ... "));
-                        state = State::SCAN_TX;
+            radio::readAdvertisement(
+                peripheralAddress,
+                [&](const loraconn::Advertisement& advertisement) -> void {
+                    Serial.println(F("Found peripheral device!"));
+                    err = radio::finishReceiving();
+                    if (err != RADIOLIB_ERR_NONE) {
+                        printing::error(F("Failed to finish receiving"), err);
+                    }
+                    int ignore = controller::onPeripheralDetected();
+                    if (!ignore) {
+                        configureConnection(advertisement);
+                        err = startConnectionRequest(advertisement);
+                        if (err == RADIOLIB_ERR_NONE) {
+                            Serial.print(F("Starting connection request ... "));
+                            state = State::SCAN_TX;
+                            timemark::mark();
+                        } else {
+                            printing::error(F("Failed to transmit connection request"), err);
+                            state = State::IDLE;
+                        }
                     } else {
-                        printing::error(F("Failed to transmit connection request"), err);
+                        Serial.printf("Not attempting to connect (code %d)", ignore);
                         state = State::IDLE;
                     }
-                } else {
-                    Serial.printf("Not attempting to connect (code %d)", ignore);
-                    state = State::IDLE;
                 }
-            });
+            );
         }
         return;
     case State::SCAN_TX:
         if (radio::pollCompletedOperation()) {
-            state = State::CONN_STARTING;
+            Serial.println(F("success"));
             timemark::mark();
+            err = prepareForFirstMessage();
+            if (err == RADIOLIB_ERR_NONE) {
+                state = State::CONN_STARTING;
+            } else {
+                printing::error(F("Disconnecting because hopping channels failed"), err);
+                state = State::IDLE;
+            }
+        } else if (timemark::timeSinceMark() >= 1000000) {
+            Serial.println(F("timed out"));
+            state = State::IDLE;
         }
         return;
     case State::CONN_STARTING:
-        if (timemark::timeSinceMark() >= connWindowOffset) {
-            err = prepareForFirstMessage();
-            if (err == RADIOLIB_ERR_NONE) {
-                state = State::CONN_TX_SLEEP;
-                timemark::mark();
-            } else {
-                state = State::IDLE;
-            }
-        }
-        return;
-    case State::CONN_TX:
-        if (radio::pollCompletedOperation()) {
-            err = radio::startReceiving();
-            if (err == RADIOLIB_ERR_NONE) {
-                Serial.print(F("Waiting for next packet ... "));
-                state = State::CONN_RX;
-            } else {
-                printing::error(F("Failed to start receiving"), err);
-                state = State::IDLE;
-            }
+        if (timemark::timeSinceMark() >= connFirstEventOffset) {
+            state = State::CONN_TX_SLEEP;
             timemark::mark();
         }
         return;
+    case State::CONN_TX:
+        {
+            bool proceed;
+            if (radio::pollCompletedOperation()) {
+                Serial.println(F("success"));
+                proceed = true;
+            } else if (timemark::timeSinceMark() >= peripheralRxWindow) {
+                Serial.println(F("timed out"));
+                proceed = true;
+            } else {
+                proceed = false;
+            }
+            if (proceed) {
+                err = prepareForNextMessage();
+                if (err == RADIOLIB_ERR_NONE) {
+                    err = radio::startReceiving();
+                    if (err == RADIOLIB_ERR_NONE) {
+                        Serial.print(F("Waiting for next packet ... "));
+                        state = State::CONN_RX;
+                    } else {
+                        printing::error(F("Failed to start receiving"), err);
+                        state = State::IDLE;
+                    }
+                    timemark::mark();
+                } else {
+                    if (err == TOO_MANY_MISSED_MESSAGES) {
+                        printing::error(F("Disconnecting because there were too many missed messages"), err);
+                    } else {
+                        printing::error(F("Disconnecting because hopping channels failed"), err);
+                    }
+                    state = State::IDLE;
+                }
+            }
+        }
+        return;
     case State::CONN_RX:
-        if (radio::pollCompletedOperation()) {
-            radio::readConnectionData(
-                [&](const loraconn::ConnectionData& data) -> void {
-                    if (data.connectionIdentifierMatches(connId)) {
+        {
+            bool proceed;
+            if (radio::pollCompletedOperation()) {
+                proceed = radio::readConnectionData(
+                    connId,
+                    [&](const loraconn::ConnectionData& data) -> void {
                         int status = processPayload(data);
-                        if (status == 0) {
-                            err = radio::finishReceiving();
-                            if (err != RADIOLIB_ERR_NONE) {
-                                printing::error(F("Failed to finish receiving"), err);
-                            }
-                            state = State::CONN_TX_SLEEP;
-                            timemark::mark();
-                            err = prepareForNextMessage();
-                            if (err != RADIOLIB_ERR_NONE) {
-                                if (err == TOO_MANY_MISSED_MESSAGES) {
-                                    printing::error(F("Disconnecting because there were too many missed messages"), err);
-                                } else {
-                                    printing::error(F("Disconnecting because hopping channels failed"), err);
-                                }
-                                state = State::IDLE;
-                            }
-                        } else {
+                        if (status != 0) {
                             printing::error(F("Invalid connection data payload"), err);
                         }
-                    } else {
-                        Serial.println(F("Ignoring data from a different connection"));
                     }
+                );
+            } else if (timemark::timeSinceMark() >= rxWindow && !radio::currentlyReceivingPacket()) {
+                Serial.println(F("Missed packet"));
+                missedMessages++;
+                proceed = true;
+                state = State::CONN_TX_SLEEP;
+            }
+            if (proceed) {
+                err = radio::finishReceiving();
+                if (err != RADIOLIB_ERR_NONE) {
+                    printing::error(F("Failed to finish receiving"), err);
                 }
-            );
-        } else if (timemark::timeSinceMark() >= rxWindow && !radio::currentlyReceivingPacket()) {
-            Serial.println(F("Missed packet"));
-            missedMessages++;
+                state = State::CONN_TX_SLEEP;
+                timemark::mark();
+                err = prepareForNextMessage();
+                if (err != RADIOLIB_ERR_NONE) {
+                    if (err == TOO_MANY_MISSED_MESSAGES) {
+                        printing::error(F("Disconnecting because there were too many missed messages"), err);
+                    } else {
+                        printing::error(F("Disconnecting because hopping channels failed"), err);
+                    }
+                    state = State::IDLE;
+                }
+            }
         }
         return;
     case State::CONN_TX_SLEEP:

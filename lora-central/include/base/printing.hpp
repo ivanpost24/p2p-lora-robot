@@ -1,5 +1,4 @@
-#ifndef WIOT_PRINTING_HPP
-#define WIOT_PRINTING_HPP
+#pragma once
 
 #include <Arduino.h>
 #include <stdint.h>
@@ -11,5 +10,3 @@ void error(const char *message, int16_t state);
 void error(const __FlashStringHelper *message, int16_t state);
 
 }
-
-#endif
