@@ -1,0 +1,7 @@
+# lora-peripheral
+
+This is the robot's code. Flash this onto the Heltec v3 on the robot. The wiring of the robot is described below.
+
+## Building the robot
+
+...
