@@ -2,9 +2,9 @@
 
 Authored by: Farjan Ahmed, Carlos Giron, Ivan Post
 
-This is our final project for CS 4501: Wireless for the Internet of Things. It is a prototype system for controlling a mobile robot over long distances (from our observation, up to 0.32 km) using the LoRa physical layer protocol. It is designed to operate on the 915 MHz unlicensed band in the United States, which means you do not need an amateur radio license to use it. [This is a video of an operator controlling the robot from about 0.3 km away](https://drive.google.com/file/d/1XLk9izT9hsWHlGPpsFzeZ8Zzyy3jfpdS/view?usp=sharing); the control latency is primarily due to delays in the video feed and is under 500 ms in practice. The exact feasible range will depend on environmental factors.
+This is our final project for CS 4501: Wireless for the Internet of Things. It is a prototype system for controlling a mobile robot over long distances (from our observation, up to 0.32 km) using the LoRa physical layer protocol on Heltec ESP32 v3 LORA boards. It is designed to operate on the 915 MHz unlicensed band in the United States, which means you do not need an amateur radio license to use it. [This is a video of an operator controlling the robot from about 0.3 km away](https://drive.google.com/file/d/1XLk9izT9hsWHlGPpsFzeZ8Zzyy3jfpdS/view?usp=sharing); the control latency is primarily due to delays in the video feed and is under 500 ms in practice. The exact feasible range will depend on environmental factors.
 
-We have provided instructions below to reproduce our results.
+We have provided instructions below to reproduce our prototype.
 
 ## Building the peripheral robot
 
@@ -47,11 +47,15 @@ Assignments for the central controller are as follows:
 
 Although the datasheet recommends using 5V as input, our code was designed around using 3v3.
 
+## Deploying the provided code
+
+This project uses PlatformIO, so configuring the project locally should be simple. Flash the Heltec v3 on the robot with the lora-peripheral code, and flash the Heltec v3 on the controller with the lora-central code. Everything should start automatically without any user input.
+
 ## Starting the robot
 After code has been flashed onto the central and peripheral devices start the device as follows:
 1. Connect the power delivery module to the power bank's 65 W output port
-2. Connect the Arduino to the power bank 
+2. Connect the Arduino to the power bank
 3. Connect the Heltec to the power bank
-4. Flip the enable switch 
+4. Flip the enable switch
 
-If the PD module and onboard led are on then the robot is ready for operation if the devices were flashed successfully and connections were correct. 
+If the PD module and onboard led are on then the robot is ready for operation if the devices were flashed successfully and connections were correct.
