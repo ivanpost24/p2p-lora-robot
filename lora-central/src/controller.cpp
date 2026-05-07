@@ -27,6 +27,7 @@ int prepareTxPacket(uint8_t *data, uint8_t capacity, uint8_t &len)
     data[0] = *reinterpret_cast<uint8_t*>(&left);
     data[1] = *reinterpret_cast<uint8_t*>(&right);
     len = 2;
+    Serial.printf("Sending (%d, %d)\n", left, right);
     return 0;
 }
 
