@@ -6,7 +6,7 @@ This is our final project for CS 4501: Wireless for the Internet of Things. It i
 
 We have provided instructions below to reproduce our results.
 
-## Building the robot
+## Building the peripheral robot
 
 ### Components list:
 * [WiFi LoRa 32 V3](https://heltec.org/project/wifi-lora-32-v3/) Heltec Board
@@ -21,6 +21,11 @@ Additional pcb relevant components such as resistors, switches, and connectors a
 
 The KiCad files for editing the schematic and gerbers for ordering PCBs are included in the "/KiCad" directory.
 
+Mount the breakout boards for motor drivers and modules onto their respective locations on the pcb:
+![robot pcb](images/pcb.png)
+
+
+## Building the central controller
 ### Pin assignments:
 Assignments for the peripheral robot device are as follows:
 * 19 - PWMA/B
@@ -29,6 +34,7 @@ Assignments for the peripheral robot device are as follows:
 * 47 - PWMA/B
 * 48 - A/BIN1
 * 33 - A/BIN2
+* Connect external 3v3 supply and gnd
 
 These pins are used to set the direction of motors and speed of motors as they are connected to tb6612fng motor drivers. You **MUST NOT** power the motor drivers using the 3v3 pins of the Heltec board. Due to a hardware issue it seems that these boards are unable to power the motor drivers and remain on for operation. You must use a seperate 3v3 source to power the drivers.
 
@@ -40,3 +46,12 @@ Assignments for the central controller are as follows:
 * 5 - Sw
 
 Although the datasheet recommends using 5V as input, our code was designed around using 3v3.
+
+## Starting the robot
+After code has been flashed onto the central and peripheral devices start the device as follows:
+1. Connect the power delivery module to the power bank's 65 W output port
+2. Connect the Arduino to the power bank 
+3. Connect the Heltec to the power bank
+4. Flip the enable switch 
+
+If the PD module and onboard led are on then the robot is ready for operation if the devices were flashed successfully and connections were correct. 
