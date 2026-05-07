@@ -1,0 +1,23 @@
+%TF.GenerationSoftware,KiCad,Pcbnew,9.0.7*%
+%TF.CreationDate,2026-02-15T15:14:22-05:00*%
+%TF.ProjectId,Training_Robot,54726169-6e69-46e6-975f-526f626f742e,rev?*%
+%TF.SameCoordinates,Original*%
+%TF.FileFunction,Profile,NP*%
+%FSLAX46Y46*%
+G04 Gerber Fmt 4.6, Leading zero omitted, Abs format (unit mm)*
+G04 Created by KiCad (PCBNEW 9.0.7) date 2026-02-15 15:14:22*
+%MOMM*%
+%LPD*%
+G01*
+G04 APERTURE LIST*
+%TA.AperFunction,Profile*%
+%ADD10C,0.050000*%
+%TD*%
+G04 APERTURE END LIST*
+D10*
+X144500000Y-43500000D02*
+X234000000Y-43500000D01*
+X234000000Y-98000000D01*
+X144500000Y-98000000D01*
+X144500000Y-43500000D01*
+M02*

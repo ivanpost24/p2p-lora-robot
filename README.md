@@ -17,9 +17,9 @@ We have provided instructions below to reproduce our results.
 * [HiLetgo game joystick](amazon.com/HiLetgo-Controller-JoyStick-Breakout-Arduino/dp/B00P7QBGD2)
 
 Additional pcb relevant components such as resistors, switches, and connectors are shown in this schematic:
-[robot schematic](https://drive.google.com/file/d/1SUa91KxaiSQ853Xc8eG_WPLGtsJD8Y2j/view?usp=sharing)
+![robot schematic](images/schematic_trainingbot.png)
 
-Gerber files for our pcb using this schematic are included in the "/gerbers" directory.
+The KiCad files for editing the schematic and gerbers for ordering PCBs are included in the "/KiCad" directory.
 
 ### Pin assignments:
 Assignments for the peripheral robot device are as follows:
