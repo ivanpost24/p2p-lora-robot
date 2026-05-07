@@ -114,35 +114,34 @@ void loraconn::ConnectionData::setConnectionIdentifier(const ConnectionIdentifie
 
 uint8_t loraconn::ConnectionData::getPayloadLength() const
 {
-    return *data(2);
+    return getDataLength() - dataHeaderLength;
 }
 
 void loraconn::ConnectionData::setPayloadLength(uint8_t payloadLength)
 {
-    *data(2) = payloadLength;
     setDataLength(dataHeaderLength + payloadLength);
 }
 
 void loraconn::ConnectionData::getPayload(uint8_t *out) const
 {
-    memcpy(out, data(3), getPayloadLength());
+    memcpy(out, data(2), getPayloadLength());
 }
 
 void loraconn::ConnectionData::setPayload(uint8_t *buf, uint8_t length)
 {
     assert(length <= payloadCapacity);
     setPayloadLength(length);
-    memcpy(data(3), buf, length);
+    memcpy(data(2), buf, length);
 }
 
 const uint8_t *loraconn::ConnectionData::payload() const
 {
-    return data(3);
+    return data(2);
 }
 
 uint8_t *loraconn::ConnectionData::payload()
 {
-    return data(3);
+    return data(2);
 }
 
 void loraconn::DisconnectionRequest::getConnectionIdentifier(ConnectionIdentifier &out) const

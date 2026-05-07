@@ -60,19 +60,7 @@ The packet type field above may be one of the following. Each packet type is exp
 
 The peripheral device shall periodically send out advertisements on channel 31. Central devices shall continuously
 listen on channel 31 for advertisements. The central device is assumed to already know the device address of the
-peripheral device to which it wishes to connect (this information is provided out-of-band). The peripheral device
-shall listen on channel 31 for at least the following durations:
-
-| SF  | RX window duration |
-| --- | ------------------ |
-| 5   | 25 ms              |
-| 6   | 30 ms              |
-| 7   | 35 ms              |
-| 8   | 45 ms              |
-| 9   | 60 ms              |
-| 10  | 85 ms              |
-| 11  | 165 ms             |
-| 12  | 270 ms             |
+peripheral device to which it wishes to connect (this information is provided out-of-band).
 
 Advertisements contain a peripheral device address and a requested RX window length for the central device, which
 should be chosen based on the spreading factor and other encoding parameters.
@@ -115,10 +103,9 @@ window offset time, measured from the end of the packet transmission.
 | Length   | Name                  | Description                                                       |
 | -------- | --------------------- | ----------------------------------------------------------------- |
 | 2 octets | Connection identifier | The same connection identifier sent in the connection request.    |
-| 1 octet  | Payload length        | Length of the payload (bytes)                                     |
 | varies   | Payload               |                                                                   |
 
-*Header length:* 3 octets; *Total length*: 6 + (Payload length) octets
+*Header length:* 2 octets; *Total length*: at least 5 octets.
 
 ### 2.5. Disconnection request
 

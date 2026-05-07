@@ -303,7 +303,7 @@ struct ConnectionData : public Packet
 {
 
     static constexpr PacketType type = PacketType::CONN_DATA;
-    static constexpr uint8_t dataHeaderLength = 3;
+    static constexpr uint8_t dataHeaderLength = 2;
 
     ConnectionData(uint8_t payloadCapacity)
     : Packet(headerLength + dataHeaderLength + payloadCapacity), payloadCapacity{payloadCapacity}
