@@ -72,6 +72,7 @@ static constexpr unsigned long advRxWindow = 150000;
 static constexpr unsigned long advEventLength = 2000000;
 static constexpr unsigned long centralRxWindow = 150000;
 static constexpr unsigned long txDelay = 500;
+static constexpr uint8_t missedPacketsTolerance = 4;
 
 enum class State
 {
@@ -96,6 +97,7 @@ static loraconn::ConnectionIdentifier connId;
 static uint8_t buf[255];
 static loraconn::Packet packet(255);
 static loraconn::ConnectionData txData(249);
+static uint8_t missedPackets = 0;
 
 // this function is called when a complete packet
 // is received by the module
@@ -339,6 +341,7 @@ void loop(void)
                         if (err == 0) {
                             err = radio.finishReceive();
                             operationCompleted = false;
+                            missedPackets = 0;
                             if (err != RADIOLIB_ERR_NONE) {
                                 sendError("Failed to finish receiving", err);
                             }
@@ -366,7 +369,12 @@ void loop(void)
             }
         } else if (micros() - eventStart >= connRxWindow && !currentlyReceivingPacket()) {
             Serial.println(F("Missed packet"));
-            state = State::IDLE;
+            if (++missedPackets > missedPacketsTolerance) {
+                Serial.println(F("Disconnecting"));
+                state = State::IDLE;
+            } else {
+                state = State::CONN_TX_SLEEP;
+            }
         }
         return;
     case State::CONN_TX_SLEEP:
